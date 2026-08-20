@@ -56,7 +56,7 @@ public class ApiController {
     @PostMapping("/auth/register")
     public ResponseEntity<?> registerUser(@RequestBody AuthRegisterRequest req) {
         try {
-            Account account = authService.register(req.vpa, req.holderName, req.phoneNumber, req.mpin);
+            Account account = authService.register(req.vpa, req.holderName, req.phoneNumber, req.mpin, req.email, req.bankName, req.bankAccountNumber, req.cardNumber, req.expiryDate);
             return ResponseEntity.ok(account);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
@@ -126,6 +126,12 @@ public class ApiController {
         public String holderName;
         public String phoneNumber;
         public String mpin;
+        public String email;
+        public String bankName;
+        public String bankAccountNumber;
+        public String cardNumber;
+        public String expiryDate;
+        public String cvv;
     }
 
     public static class AuthLoginRequest {

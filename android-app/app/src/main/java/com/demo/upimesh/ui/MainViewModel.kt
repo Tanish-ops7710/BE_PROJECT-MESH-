@@ -228,9 +228,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun registerUser(vpa: String, name: String, phone: String, mpin: String, onResult: (Boolean, String) -> Unit) {
+    fun registerUser(
+        vpa: String,
+        name: String,
+        phone: String,
+        mpin: String,
+        email: String,
+        bankName: String,
+        bankAccountNumber: String,
+        cardNumber: String,
+        expiryDate: String,
+        cvv: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
         viewModelScope.launch {
-            val res = repository.registerUser(vpa, name, phone, mpin)
+            val res = repository.registerUser(
+                vpa = vpa,
+                holderName = name,
+                phoneNumber = phone,
+                mpin = mpin,
+                email = email,
+                bankName = bankName,
+                bankAccountNumber = bankAccountNumber,
+                cardNumber = cardNumber,
+                expiryDate = expiryDate,
+                cvv = cvv
+            )
             if (res.isSuccess) {
                 onResult(true, "Registration successful")
             } else {

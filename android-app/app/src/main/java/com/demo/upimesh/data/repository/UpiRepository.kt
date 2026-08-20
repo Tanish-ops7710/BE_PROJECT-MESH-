@@ -360,20 +360,41 @@ class UpiRepository(
         }
     }
 
-    suspend fun registerUser(vpa: String, holderName: String, phoneNumber: String, mpin: String): Result<Account> {
+    suspend fun registerUser(
+        vpa: String,
+        holderName: String,
+        phoneNumber: String,
+        mpin: String,
+        email: String,
+        bankName: String,
+        bankAccountNumber: String,
+        cardNumber: String,
+        expiryDate: String,
+        cvv: String
+    ): Result<Account> {
         return try {
-            val resp = apiService.registerUser(AuthRegisterRequest(vpa, holderName, phoneNumber, mpin))
+            val resp = apiService.registerUser(
+                AuthRegisterRequest(
+                    vpa = vpa,
+                    holderName = holderName,
+                    phoneNumber = phoneNumber,
+                    mpin = mpin,
+                    email = email,
+                    bankName = bankName,
+                    bankAccountNumber = bankAccountNumber,
+                    cardNumber = cardNumber,
+                    expiryDate = expiryDate,
+                    cvv = cvv
+                )
+            )
             if (resp.isSuccessful && resp.body() != null) {
                 Result.success(resp.body()!!)
             } else {
-                // Fallback local registration
-                val acc = Account(vpa, holderName, BigDecimal("5000.00"), phoneNumber)
-                Result.success(acc)
+                val errorMsg = resp.errorBody()?.string() ?: "Registration failed"
+                Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {
-            // Standalone offline fallback without needing backend server
-            val acc = Account(vpa, holderName, BigDecimal("5000.00"), phoneNumber)
-            Result.success(acc)
+            Result.failure(Exception("Cannot connect to server. Ensure your backend is running and the Server IP is configured correctly.", e))
         }
     }
 
@@ -383,16 +404,11 @@ class UpiRepository(
             if (resp.isSuccessful && resp.body() != null) {
                 Result.success(resp.body()!!)
             } else {
-                // Standalone local offline fallback login
-                val name = if (vpa.contains("@")) vpa.substringBefore("@").replaceFirstChar { it.uppercase() } else "Demo User"
-                val acc = Account(vpa, name, BigDecimal("5000.00"))
-                Result.success(AuthLoginResponse("OFFLINE_SESSION_TOKEN_" + vpa, vpa, acc))
+                val errorMsg = resp.errorBody()?.string() ?: "Invalid VPA or MPIN"
+                Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {
-            // Standalone local offline fallback login when backend server is offline/unreachable
-            val name = if (vpa.contains("@")) vpa.substringBefore("@").replaceFirstChar { it.uppercase() } else "Demo User"
-            val acc = Account(vpa, name, BigDecimal("5000.00"))
-            Result.success(AuthLoginResponse("OFFLINE_SESSION_TOKEN_" + vpa, vpa, acc))
+            Result.failure(Exception("Cannot connect to server. Ensure your backend is running and the Server IP is configured correctly.", e))
         }
     }
 

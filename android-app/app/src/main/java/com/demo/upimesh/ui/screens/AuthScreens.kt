@@ -2,6 +2,8 @@ package com.demo.upimesh.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -215,109 +217,297 @@ fun RegisterScreen(navController: NavController, viewModel: MainViewModel) {
     var vpa by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var bankName by remember { mutableStateOf("") }
+    var bankAccountNumber by remember { mutableStateOf("") }
+    var cardNumber by remember { mutableStateOf("") }
+    var expiryDate by remember { mutableStateOf("") }
+    var cvv by remember { mutableStateOf("") }
     var mpin by remember { mutableStateOf("") }
     var confirmMpin by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFFF8F9FA))
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp)
+                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text(text = "Create Account", style = MaterialTheme.typography.titleLarge)
-                Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Text(
+                text = "Register Demo UPI",
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                color = UpiDarkBlue
+            )
+            Text(
+                text = "Secure Simulation registration",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
 
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Full Name") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = vpa,
-                    onValueChange = { vpa = it },
-                    label = { Text("Desired VPA (e.g. name@demo)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text("Mobile Number") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = mpin,
-                    onValueChange = { mpin = it },
-                    label = { Text("4-Digit MPIN") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = confirmMpin,
-                    onValueChange = { confirmMpin = it },
-                    label = { Text("Confirm MPIN") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
-                )
-                Spacer(modifier = Modifier.height(24.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    // Personal details section
+                    Text(
+                        text = "1. Personal Details",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = UpiPrimaryBlue
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                if (isLoading) {
-                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = UpiPrimaryBlue)
-                    }
-                } else {
-                    Button(
-                        onClick = {
-                            if (vpa.isEmpty() || name.isEmpty() || phone.isEmpty() || mpin.isEmpty()) {
-                                Toast.makeText(context, "Please fill in all fields", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            if (mpin != confirmMpin) {
-                                Toast.makeText(context, "MPIN and Confirm MPIN do not match", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            isLoading = true
-                            viewModel.sendOtp(phone) { success, otp ->
-                                isLoading = false
-                                if (success) {
-                                    Toast.makeText(context, "OTP Generated! Code is: $otp", Toast.LENGTH_LONG).show()
-                                    navController.navigate("${Screen.OtpVerification.route}?vpa=$vpa&name=$name&phone=$phone&mpin=$mpin")
-                                } else {
-                                    Toast.makeText(context, otp, Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Full Name") },
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = UpiPrimaryBlue) },
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = UpiPrimaryBlue)
-                    ) {
-                        Text("Register Account")
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { phone = it },
+                        label = { Text("Mobile Number") },
+                        leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = UpiPrimaryBlue) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        label = { Text("Email Address") },
+                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = UpiPrimaryBlue) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = vpa,
+                        onValueChange = { vpa = it },
+                        label = { Text("Desired VPA (e.g. name@demo)") },
+                        leadingIcon = { Icon(Icons.Default.AccountCircle, contentDescription = null, tint = UpiPrimaryBlue) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    // Bank info section
+                    Text(
+                        text = "2. Bank Account Details",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = UpiPrimaryBlue
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = bankName,
+                        onValueChange = { bankName = it },
+                        label = { Text("Bank Name") },
+                        leadingIcon = { Icon(Icons.Default.AccountBalance, contentDescription = null, tint = UpiPrimaryBlue) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = bankAccountNumber,
+                        onValueChange = { bankAccountNumber = it },
+                        label = { Text("Demo Bank Account Number") },
+                        leadingIcon = { Icon(Icons.Default.Numbers, contentDescription = null, tint = UpiPrimaryBlue) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    // Card simulation section
+                    Text(
+                        text = "3. Card Verification (Simulation)",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = UpiPrimaryBlue
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = cardNumber,
+                        onValueChange = { if (it.length <= 16) cardNumber = it },
+                        label = { Text("Demo Debit Card Number") },
+                        leadingIcon = { Icon(Icons.Default.CreditCard, contentDescription = null, tint = UpiPrimaryBlue) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = expiryDate,
+                            onValueChange = { if (it.length <= 5) expiryDate = it },
+                            label = { Text("Expiry (MM/YY)") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        OutlinedTextField(
+                            value = cvv,
+                            onValueChange = { if (it.length <= 3) cvv = it },
+                            label = { Text("CVV") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            singleLine = true
+                        )
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    // PIN setup section
+                    Text(
+                        text = "4. Setup Secure PIN",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = UpiPrimaryBlue
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = mpin,
+                        onValueChange = { if (it.length <= 4) mpin = it },
+                        label = { Text("4-Digit UPI PIN") },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = UpiPrimaryBlue) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = confirmMpin,
+                        onValueChange = { if (it.length <= 4) confirmMpin = it },
+                        label = { Text("Confirm UPI PIN") },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = UpiPrimaryBlue) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            if (isLoading) {
+                CircularProgressIndicator(color = UpiPrimaryBlue)
+            } else {
+                Button(
+                    onClick = {
+                        if (name.isEmpty() || phone.isEmpty() || email.isEmpty() || vpa.isEmpty() ||
+                            bankName.isEmpty() || bankAccountNumber.isEmpty() || cardNumber.isEmpty() ||
+                            expiryDate.isEmpty() || cvv.isEmpty() || mpin.isEmpty()) {
+                            Toast.makeText(context, "Please fill in all fields", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (mpin != confirmMpin) {
+                            Toast.makeText(context, "UPI PINs do not match", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        isLoading = true
+                        viewModel.sendOtp(phone) { success, otp ->
+                            isLoading = false
+                            if (success) {
+                                Toast.makeText(context, "OTP Generated! Code is: $otp", Toast.LENGTH_LONG).show()
+                                navController.navigate(
+                                    "${Screen.OtpVerification.route}?vpa=$vpa&name=$name&phone=$phone&mpin=$mpin&email=$email&bankName=$bankName&bankAccountNumber=$bankAccountNumber&cardNumber=$cardNumber&expiryDate=$expiryDate&cvv=$cvv"
+                                )
+                            } else {
+                                Toast.makeText(context, otp, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = UpiPrimaryBlue)
+                ) {
+                    Text("Verify Details via OTP", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text("Already have an account? ")
+                TextButton(
+                    onClick = { navController.navigate(Screen.Login.route) { popUpTo(0) } },
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text("Login", color = UpiPrimaryBlue, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(modifier = Modifier.height(48.dp))
         }
     }
 }
@@ -427,7 +617,13 @@ fun OtpVerificationScreen(
     vpa: String,
     name: String,
     phone: String,
-    mpin: String
+    mpin: String,
+    email: String,
+    bankName: String,
+    bankAccountNumber: String,
+    cardNumber: String,
+    expiryDate: String,
+    cvv: String
 ) {
     val context = LocalContext.current
     var otp by remember { mutableStateOf("") }
@@ -477,11 +673,22 @@ fun OtpVerificationScreen(
                             isLoading = true
                             viewModel.verifyOtp(phone, otp) { verifySuccess, verifyMsg ->
                                 if (verifySuccess) {
-                                    viewModel.registerUser(vpa, name, phone, mpin) { registerSuccess, registerMsg ->
+                                    viewModel.registerUser(
+                                        vpa = vpa,
+                                        name = name,
+                                        phone = phone,
+                                        mpin = mpin,
+                                        email = email,
+                                        bankName = bankName,
+                                        bankAccountNumber = bankAccountNumber,
+                                        cardNumber = cardNumber,
+                                        expiryDate = expiryDate,
+                                        cvv = cvv
+                                    ) { registerSuccess, registerMsg ->
                                         isLoading = false
                                         if (registerSuccess) {
-                                            Toast.makeText(context, "Registration successful! Please login.", Toast.LENGTH_LONG).show()
-                                            navController.navigate(Screen.Login.route) {
+                                            Toast.makeText(context, "Registration successful!", Toast.LENGTH_LONG).show()
+                                            navController.navigate(Screen.RegistrationSuccess.route) {
                                                 popUpTo(Screen.Register.route) { inclusive = true }
                                             }
                                         } else {
@@ -502,6 +709,66 @@ fun OtpVerificationScreen(
                     ) {
                         Text("Verify & Register")
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RegistrationSuccessScreen(navController: NavController) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF8F9FA))
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Success",
+                    tint = Color(0xFF0F9D58),
+                    modifier = Modifier.size(80.dp)
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "Registration Successful",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF202124)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Your demo UPI account has been successfully created and saved in the backend MySQL database.",
+                    fontSize = 14.sp,
+                    color = Color(0xFF5F6368),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(32.dp))
+                Button(
+                    onClick = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = UpiPrimaryBlue)
+                ) {
+                    Text("Go to Login", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

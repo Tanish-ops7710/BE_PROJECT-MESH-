@@ -37,13 +37,23 @@ public class AuthService {
         }
     }
 
-    public Account register(String vpa, String holderName, String phoneNumber, String mpin) {
+    public Account register(String vpa, String holderName, String phoneNumber, String mpin, String email, String bankName, String bankAccountNumber, String cardNumber, String expiryDate) {
         if (accountRepository.existsById(vpa)) {
             throw new IllegalArgumentException("UPI ID already registered");
         }
         String hashedMpin = hashMpin(mpin);
         // Create account with initial 5000.00 wallet balance
         Account account = new Account(vpa, holderName, new BigDecimal("5000.00"), phoneNumber, hashedMpin);
+        account.setEmail(email);
+        account.setBankName(bankName);
+        account.setBankAccountNumber(bankAccountNumber);
+        if (cardNumber != null && cardNumber.length() >= 4) {
+            String last4 = cardNumber.substring(cardNumber.length() - 4);
+            account.setMaskedCardNumber("XXXX-XXXX-XXXX-" + last4);
+        } else {
+            account.setMaskedCardNumber("XXXX-XXXX-XXXX-XXXX");
+        }
+        account.setExpiryDate(expiryDate);
         return accountRepository.save(account);
     }
 

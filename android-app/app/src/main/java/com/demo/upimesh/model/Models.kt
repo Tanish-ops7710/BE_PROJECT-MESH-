@@ -23,7 +23,12 @@ data class Account(
     @SerializedName("pendingBalance") val pendingBalance: BigDecimal? = BigDecimal.ZERO,
     @SerializedName("dailyLimit") val dailyLimit: BigDecimal? = BigDecimal("10000.00"),
     @SerializedName("monthlyLimit") val monthlyLimit: BigDecimal? = BigDecimal("100000.00"),
-    @SerializedName("isFrozen") val isFrozen: Boolean = false
+    @SerializedName("isFrozen") val isFrozen: Boolean = false,
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("bankName") val bankName: String? = null,
+    @SerializedName("bankAccountNumber") val bankAccountNumber: String? = null,
+    @SerializedName("maskedCardNumber") val maskedCardNumber: String? = null,
+    @SerializedName("expiryDate") val expiryDate: String? = null
 )
 
 object TransactionStatus {
@@ -105,7 +110,13 @@ data class AuthRegisterRequest(
     val vpa: String,
     val holderName: String,
     val phoneNumber: String,
-    val mpin: String
+    val mpin: String,
+    val email: String,
+    val bankName: String,
+    val bankAccountNumber: String,
+    val cardNumber: String,
+    val expiryDate: String,
+    val cvv: String
 )
 
 data class AuthLoginRequest(
