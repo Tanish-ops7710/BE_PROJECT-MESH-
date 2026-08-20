@@ -1,0 +1,2383 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline UPI Mesh — Demo Client</title>
+    <!-- Fonts and Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+    <!-- jsPDF for Receipt Downloads -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        :root {
+            --bg-white: #FFFFFF;
+            --primary: #1976D2;
+            --primary-light: #64B5F6;
+            --primary-bg: #E3F2FD;
+            --accent: #4CAF50;
+            --accent-bg: #E8F5E9;
+            --danger: #EF5350;
+            --danger-bg: #FFEBEE;
+            --card-grey: #F8F9FA;
+            --text-dark: #212121;
+            --text-muted: #757575;
+            --border-color: #E0E0E0;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.05);
+            --shadow-inset: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: #F0F4F8;
+            color: var(--text-dark);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Split-screen Layout for Desktop */
+        .workspace {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            background: #EDF2F7;
+        }
+
+        /* Left Side: Mobile Phone Simulation */
+        .phone-section {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #E2E8F0;
+            border-right: 1px solid var(--border-color);
+            position: relative;
+            padding: 20px;
+        }
+
+        /* Right Side: Developer Console / Presentation Dashboard */
+        .console-section {
+            flex: 1.2;
+            display: flex;
+            flex-direction: column;
+            background: #1A202C;
+            color: #E2E8F0;
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        /* Mobile Device Shell */
+        .phone-frame {
+            width: 380px;
+            height: 780px;
+            background: #000;
+            border-radius: 40px;
+            padding: 12px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            border: 4px solid #4A5568;
+        }
+
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background: var(--bg-white);
+            border-radius: 32px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Camera Notch */
+        .phone-notch {
+            width: 150px;
+            height: 25px;
+            background: #000;
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            border-bottom-left-radius: 18px;
+            border-bottom-right-radius: 18px;
+            z-index: 1000;
+        }
+
+        /* Status Bar */
+        .phone-status-bar {
+            height: 40px;
+            background: transparent;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 24px 0 24px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-dark);
+            z-index: 999;
+        }
+
+        .status-icons {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-icons span {
+            font-size: 16px;
+        }
+
+        /* Bottom Nav Indicator Bar */
+        .phone-home-bar {
+            height: 20px;
+            width: 100%;
+            background: transparent;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding-bottom: 8px;
+            position: absolute;
+            bottom: 0;
+            z-index: 999;
+        }
+
+        .home-indicator {
+            width: 120px;
+            height: 5px;
+            background: #CBD5E0;
+            border-radius: 10px;
+        }
+
+        /* Environmental Watermark */
+        .demo-watermark {
+            background: #FFF9C4;
+            color: #F57F17;
+            font-size: 10px;
+            font-weight: 700;
+            text-align: center;
+            padding: 4px 8px;
+            border-bottom: 1px solid #FFE082;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Views Container */
+        .phone-views {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .screen-view {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            background: var(--bg-white);
+            padding: 16px;
+            padding-top: 8px;
+            overflow-y: auto;
+            animation: viewFadeIn 0.3s ease-in-out;
+        }
+
+        .screen-view.active {
+            display: flex;
+        }
+
+        @keyframes viewFadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 16px;
+            width: 100%;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1.5px solid var(--border-color);
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            outline: none;
+            transition: var(--transition-smooth);
+        }
+
+        .form-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-bg);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: var(--radius-lg);
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(25, 118, 210, 0.2);
+        }
+
+        .btn:hover {
+            background: #1565C0;
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        .btn-secondary {
+            background: var(--card-grey);
+            color: var(--text-dark);
+            border: 1px solid var(--border-color);
+            box-shadow: none;
+        }
+
+        .btn-secondary:hover {
+            background: #E8ECEF;
+        }
+
+        /* Console Panels */
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #2D3748;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }
+
+        .console-header h2 {
+            font-size: 20px;
+            color: #63B3ED;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .console-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .console-tab {
+            padding: 8px 16px;
+            background: #2D3748;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: var(--transition-smooth);
+            border: none;
+            color: #A0AEC0;
+        }
+
+        .console-tab.active {
+            background: #3182CE;
+            color: white;
+        }
+
+        .console-content {
+            flex: 1;
+            background: #2D3748;
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        /* Mesh Diagram Styling */
+        .mesh-graph {
+            width: 100%;
+            height: 280px;
+            background: #1A202C;
+            border-radius: var(--radius-md);
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #4A5568;
+            margin-bottom: 16px;
+        }
+
+        .mesh-node {
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            background: #2D3748;
+            border: 2.5px solid #4A5568;
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 9px;
+            font-weight: 700;
+            color: white;
+            transition: var(--transition-smooth);
+            z-index: 10;
+        }
+
+        .mesh-node.active-packet {
+            border-color: var(--primary-light);
+            box-shadow: 0 0 15px rgba(100, 181, 246, 0.6);
+            background: #2B6CB0;
+        }
+
+        .mesh-node.bridge {
+            border-color: var(--accent);
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.4);
+        }
+
+        .mesh-node img {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-bottom: 2px;
+        }
+
+        .mesh-node-label {
+            font-size: 8px;
+            color: #CBD5E0;
+            text-align: center;
+            margin-top: 1px;
+        }
+
+        .mesh-link {
+            stroke: #4A5568;
+            stroke-width: 2;
+            stroke-dasharray: 4;
+            animation: dash 20s linear infinite;
+        }
+
+        @keyframes dash {
+            to {
+                stroke-dashoffset: -1000;
+            }
+        }
+
+        /* Success tick animation styling */
+        .success-checkmark {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 16px auto;
+        }
+
+        .checkmark {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: block;
+            stroke-width: 2;
+            stroke: #4CAF50;
+            stroke-miterlimit: 10;
+            box-shadow: inset 0px 0px 0px #4CAF50;
+            animation: fill .4s ease-in-out .4s forwards, scale .3s ease-in-out .9s forwards;
+        }
+
+        .checkmark__circle {
+            stroke-dasharray: 166;
+            stroke-dashoffset: 166;
+            stroke-width: 2;
+            stroke-miterlimit: 10;
+            stroke: #4CAF50;
+            fill: none;
+            animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+        }
+
+        .checkmark__check {
+            transform-origin: 50% 50%;
+            stroke-dasharray: 48;
+            stroke-dashoffset: 48;
+            animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.8s forwards;
+        }
+
+        @keyframes stroke {
+            100% { stroke-dashoffset: 0; }
+        }
+        @keyframes scale {
+            0%, 100% { transform: none; }
+            50% { transform: scale3d(1.1, 1.1, 1); }
+        }
+        @keyframes fill {
+            100% { box-shadow: inset 0px 0px 0px 40px #E8F5E9; }
+        }
+
+        /* SMS Simulation Window Drawer style */
+        .sms-notification {
+            position: absolute;
+            top: -100px;
+            left: 12px;
+            right: 12px;
+            background: #333;
+            color: white;
+            border-radius: var(--radius-md);
+            padding: 12px 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            transition: var(--transition-smooth);
+            z-index: 2000;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .sms-notification.show {
+            top: 50px;
+        }
+
+        /* Custom Keypad for PIN entry */
+        .pin-keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-top: 16px;
+            padding: 0 12px;
+        }
+
+        .keypad-btn {
+            height: 52px;
+            border-radius: 50%;
+            background: var(--card-grey);
+            border: 1px solid var(--border-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+        }
+
+        .keypad-btn:active {
+            background: #E0E0E0;
+        }
+
+        /* Custom Styles for Home quick grid */
+        .quick-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin: 16px 0;
+        }
+
+        .quick-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .quick-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-md);
+            background: var(--primary-bg);
+            color: var(--primary);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 24px;
+            transition: var(--transition-smooth);
+        }
+
+        .quick-icon:hover {
+            transform: scale(1.05);
+        }
+
+        .quick-label {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-dark);
+            text-align: center;
+        }
+
+        /* Console log list styling */
+        .terminal-log {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            color: #48BB78;
+            margin-bottom: 6px;
+            word-break: break-all;
+        }
+
+        /* Database table layouts */
+        .db-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            margin-top: 8px;
+        }
+
+        .db-table th, .db-table td {
+            padding: 6px 8px;
+            border: 1px solid #4A5568;
+            text-align: left;
+        }
+
+        .db-table th {
+            background: #1A202C;
+            color: #A0AEC0;
+        }
+
+        .db-table tr:nth-child(even) {
+            background: rgba(255,255,255,0.02);
+        }
+
+        /* Avatar images setup */
+        .avatar-circle {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: 700;
+            color: white;
+            font-size: 16px;
+        }
+
+        /* Custom slider switch style */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .switch input { 
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .3s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--primary);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        /* CSS for Timeline view */
+        .timeline {
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            padding-left: 24px;
+            margin: 16px 0;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 6px;
+            top: 4px;
+            bottom: 4px;
+            width: 2px;
+            background: var(--border-color);
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-bottom: 16px;
+            font-size: 12px;
+        }
+
+        .timeline-marker {
+            position: absolute;
+            left: -23px;
+            top: 2px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #CBD5E0;
+            border: 2px solid white;
+        }
+
+        .timeline-item.active .timeline-marker {
+            background: var(--primary);
+            box-shadow: 0 0 8px var(--primary-light);
+        }
+
+        .timeline-item.completed .timeline-marker {
+            background: var(--accent);
+        }
+
+        /* Biometric simulation modal */
+        .bio-modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1500;
+        }
+
+        .bio-card {
+            background: white;
+            border-radius: var(--radius-lg);
+            width: 280px;
+            padding: 24px;
+            text-align: center;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .bio-icon-pulse {
+            font-size: 64px;
+            color: var(--primary);
+            margin: 16px 0;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.8; }
+        }
+
+        /* Floating controls bar */
+        .demo-control-bar {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            background: #2D3748;
+            padding: 12px 18px;
+            border-radius: var(--radius-lg);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            border: 1.5px solid #4A5568;
+            z-index: 1000;
+        }
+
+        /* Responsive handling */
+        @media (max-width: 900px) {
+            .workspace {
+                flex-direction: column;
+                overflow-y: auto;
+            }
+            .phone-section {
+                padding: 10px;
+                height: 820px;
+                border-right: none;
+                border-bottom: 1px solid var(--border-color);
+            }
+            .console-section {
+                height: 600px;
+            }
+            .demo-control-bar {
+                top: 10px;
+                bottom: auto;
+                right: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="workspace">
+        
+        <!-- ==================== LEFT SIDE: MOBILE PHONE SIMULATION ==================== -->
+        <div class="phone-section">
+            
+            <!-- In-App SMS Alert Banner -->
+            <div id="smsNotification" class="sms-notification">
+                <span class="material-symbols-outlined" style="color: #63B3ED; font-size: 28px;">sms</span>
+                <div style="flex: 1;">
+                    <div style="font-weight: 700; font-size: 11px; color: #E2E8F0;">Simulated Message</div>
+                    <div id="smsMessageText" style="font-size: 11px; margin-top: 2px;">No alerts.</div>
+                </div>
+                <span class="material-symbols-outlined" style="cursor: pointer; font-size: 18px;" onclick="closeSmsAlert()">close</span>
+            </div>
+
+            <!-- Phone Frame -->
+            <div class="phone-frame">
+                <div class="phone-notch"></div>
+                
+                <div class="phone-screen">
+                    <!-- Status Bar -->
+                    <div class="phone-status-bar">
+                        <span id="phoneTime">18:30</span>
+                        <div class="status-icons">
+                            <span id="bluetoothStatusIcon" class="material-symbols-outlined" style="color: var(--text-muted)">bluetooth_disabled</span>
+                            <span id="networkStatusIcon" class="material-symbols-outlined">wifi</span>
+                            <span class="material-symbols-outlined">battery_5_bar</span>
+                        </div>
+                    </div>
+
+                    <!-- Watermark -->
+                    <div class="demo-watermark">
+                        ⚠️ Demo Environment – No real money is transferred.
+                    </div>
+
+                    <!-- PHONE VIEWS -->
+                    <div class="phone-views">
+                        
+                        <!-- 1. SPLASH SCREEN -->
+                        <div id="viewSplash" class="screen-view active" style="justify-content: center; align-items: center; background: var(--primary);">
+                            <div style="text-align: center; color: white;">
+                                <span class="material-symbols-outlined" style="font-size: 72px; animation: pulse 1.5s infinite;">contactless</span>
+                                <h1 style="font-size: 24px; margin-top: 12px; font-weight: 700; letter-spacing: 0.5px;">Offline UPI Mesh</h1>
+                                <p style="font-size: 11px; opacity: 0.7; margin-top: 6px;">Secure Bluetooth Mesh Network</p>
+                            </div>
+                        </div>
+
+                        <!-- 2. LOGIN SCREEN -->
+                        <div id="viewLogin" class="screen-view">
+                            <div style="margin-bottom: 24px; text-align: center; margin-top: 40px;">
+                                <span class="material-symbols-outlined" style="font-size: 48px; color: var(--primary)">account_balance_wallet</span>
+                                <h2 style="font-size: 20px; font-weight: 700; margin-top: 10px;">Welcome Back</h2>
+                                <p style="font-size: 12px; color: var(--text-muted)">Login to your Offline UPI account</p>
+                            </div>
+                            <div class="form-group">
+                                <label>UPI ID (VPA)</label>
+                                <input type="text" id="loginVpa" class="form-input" placeholder="tanish@demo" value="tanish@demo">
+                            </div>
+                            <div class="form-group">
+                                <label>PASSWORD</label>
+                                <input type="password" id="loginPassword" class="form-input" placeholder="••••••" value="123456">
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 24px;">
+                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <input type="checkbox" checked> Remember Me
+                                </label>
+                                <a href="#" style="color: var(--primary); font-weight: 600; text-decoration: none;" onclick="switchView('viewForgot')">Forgot VPA/PIN?</a>
+                            </div>
+                            <button class="btn" onclick="handleLogin()">Login <span class="material-symbols-outlined">arrow_forward</span></button>
+                            <p style="font-size: 12px; text-align: center; margin-top: 24px; color: var(--text-muted)">
+                                Don't have an account? <a href="#" style="color: var(--primary); font-weight: 600; text-decoration: none;" onclick="switchView('viewRegister')">Sign Up</a>
+                            </p>
+                        </div>
+
+                        <!-- 3. REGISTRATION SCREEN -->
+                        <div id="viewRegister" class="screen-view">
+                            <div style="margin-bottom: 16px; margin-top: 20px;">
+                                <h2 style="font-size: 18px; font-weight: 700;">Create Account</h2>
+                                <p style="font-size: 11px; color: var(--text-muted)">Register your simulated demo account</p>
+                            </div>
+                            <div class="form-group">
+                                <label>FULL NAME</label>
+                                <input type="text" id="regName" class="form-input" placeholder="Rahul Sharma">
+                            </div>
+                            <div class="form-group">
+                                <label>EMAIL ADDRESS</label>
+                                <input type="email" id="regEmail" class="form-input" placeholder="rahul@demo.com">
+                            </div>
+                            <div class="form-group">
+                                <label>PHONE NUMBER</label>
+                                <input type="text" id="regPhone" class="form-input" placeholder="9876543210">
+                            </div>
+                            <div class="form-group">
+                                <label>CHOOSE UPI ID (VPA)</label>
+                                <input type="text" id="regVpa" class="form-input" placeholder="rahul@demo">
+                            </div>
+                            <div class="form-group">
+                                <label>CHOOSE MPIN (4 Digits)</label>
+                                <input type="password" id="regMpin" class="form-input" placeholder="••••" maxlength="4">
+                            </div>
+                            <div class="form-group">
+                                <label>PASSWORD</label>
+                                <input type="password" id="regPassword" class="form-input" placeholder="••••••">
+                            </div>
+                            <div class="form-group">
+                                <label>CONFIRM PASSWORD</label>
+                                <input type="password" id="regConfirmPassword" class="form-input" placeholder="••••••">
+                            </div>
+                            
+                            <!-- Profile Avatar Choice -->
+                            <div class="form-group">
+                                <label>SELECT PROFILE AVATAR</label>
+                                <div style="display: flex; gap: 8px; overflow-x: auto; padding: 4px 0;">
+                                    <div class="avatar-circle" style="background: #E53935; cursor: pointer; border: 2px solid transparent;" onclick="selectRegAvatar(this, '#E53935')">R</div>
+                                    <div class="avatar-circle" style="background: #1E88E5; cursor: pointer; border: 2px solid transparent;" onclick="selectRegAvatar(this, '#1E88E5')">U</div>
+                                    <div class="avatar-circle" style="background: #43A047; cursor: pointer; border: 2px solid transparent;" onclick="selectRegAvatar(this, '#43A047')">U</div>
+                                    <div class="avatar-circle" style="background: #FDD835; color: black; cursor: pointer; border: 2px solid transparent;" onclick="selectRegAvatar(this, '#FDD835')">A</div>
+                                    <div class="avatar-circle" style="background: #8E24AA; cursor: pointer; border: 2px solid transparent;" onclick="selectRegAvatar(this, '#8E24AA')">M</div>
+                                    <div class="avatar-circle" style="background: #3949AB; cursor: pointer; border: 2px solid transparent;" onclick="selectRegAvatar(this, '#3949AB')">P</div>
+                                </div>
+                            </div>
+
+                            <button class="btn" onclick="handleRegister()">Register <span class="material-symbols-outlined">how_to_reg</span></button>
+                            <p style="font-size: 12px; text-align: center; margin-top: 16px; color: var(--text-muted); padding-bottom: 20px;">
+                                Already registered? <a href="#" style="color: var(--primary); font-weight: 600; text-decoration: none;" onclick="switchView('viewLogin')">Login</a>
+                            </p>
+                        </div>
+
+                        <!-- 4. OTP / VERIFICATION SCREEN -->
+                        <div id="viewOtp" class="screen-view" style="justify-content: center;">
+                            <div style="text-align: center; margin-bottom: 24px;">
+                                <span class="material-symbols-outlined" style="font-size: 56px; color: var(--primary)">domain_verification</span>
+                                <h2 style="font-size: 18px; font-weight: 700; margin-top: 12px;">Verify Mobile Number</h2>
+                                <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Enter the verification code sent to your device</p>
+                            </div>
+                            <div class="form-group">
+                                <input type="text" id="otpCode" class="form-input" placeholder="123456" style="text-align: center; font-size: 20px; letter-spacing: 6px; font-weight: 700;" maxlength="6">
+                            </div>
+                            <div style="text-align: center; margin-bottom: 24px; font-size: 11px; color: var(--text-muted);">
+                                Hint: Enter the demo passcode <strong style="color: var(--primary);">123456</strong>
+                            </div>
+                            <button class="btn" onclick="verifyOtp()">Confirm OTP</button>
+                        </div>
+
+                        <!-- 5. FORGOT PASSWORD -->
+                        <div id="viewForgot" class="screen-view" style="justify-content: center;">
+                            <div style="text-align: center; margin-bottom: 24px;">
+                                <span class="material-symbols-outlined" style="font-size: 56px; color: var(--primary)">lock_reset</span>
+                                <h2 style="font-size: 18px; font-weight: 700; margin-top: 12px;">Forgot Password?</h2>
+                                <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Enter your VPA to request simulated recovery code</p>
+                            </div>
+                            <div class="form-group">
+                                <label>UPI ID (VPA)</label>
+                                <input type="text" id="forgotVpa" class="form-input" placeholder="tanish@demo">
+                            </div>
+                            <button class="btn" onclick="handleForgotPassword()">Submit <span class="material-symbols-outlined">send</span></button>
+                            <button class="btn btn-secondary" style="margin-top: 10px;" onclick="switchView('viewLogin')">Back to Login</button>
+                        </div>
+
+                        <!-- 6. HOME DASHBOARD -->
+                        <div id="viewHome" class="screen-view">
+                            <!-- Dashboard Header -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 12px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div id="userAvatarCircle" class="avatar-circle" style="background: var(--primary); width: 36px; height: 36px; font-size: 14px;">T</div>
+                                    <div>
+                                        <div style="font-size: 10px; color: var(--text-muted);">Good Morning,</div>
+                                        <div id="homeUserName" style="font-size: 13px; font-weight: 700;">Tanish</div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <span class="material-symbols-outlined" style="cursor: pointer; font-size: 22px;" onclick="switchView('viewNotifications')">notifications</span>
+                                    <span class="material-symbols-outlined" style="cursor: pointer; font-size: 22px;" onclick="switchView('viewSettings')">settings</span>
+                                </div>
+                            </div>
+
+                            <!-- Network pill toggles -->
+                            <div style="display: flex; justify-content: space-between; background: var(--card-grey); padding: 8px 12px; border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-color);">
+                                <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;">
+                                    <span class="material-symbols-outlined" style="font-size: 16px; color: var(--primary)">bluetooth</span>
+                                    Bluetooth: <span id="bluetoothStatusLabel" style="color: var(--danger)">OFFLINE</span>
+                                    <label class="switch" style="margin-left: 4px;">
+                                        <input type="checkbox" id="bluetoothToggle" onchange="toggleBluetooth()">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;">
+                                    <span class="material-symbols-outlined" style="font-size: 16px; color: var(--primary)">wifi</span>
+                                    Internet: <span id="internetStatusLabel" style="color: var(--accent)">4G/WIFI</span>
+                                    <label class="switch" style="margin-left: 4px;">
+                                        <input type="checkbox" id="internetToggle" checked onchange="toggleInternet()">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Fictional Bank Balance Card -->
+                            <div style="background: linear-gradient(135deg, #1976D2, #1565C0); color: white; border-radius: var(--radius-lg); padding: 18px; position: relative; box-shadow: 0 6px 15px rgba(25, 118, 210, 0.3); margin-bottom: 16px;">
+                                <div style="font-size: 11px; font-weight: 600; opacity: 0.85;">Offline UPI Demo Bank</div>
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 14px;">
+                                    <div>
+                                        <div style="font-size: 10px; opacity: 0.75; text-transform: uppercase;">Available Balance</div>
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <h2 id="homeBalanceVal" style="font-size: 26px; font-weight: 700; letter-spacing: 0.5px;">₹5,000.00</h2>
+                                            <span id="balanceEyeIcon" class="material-symbols-outlined" style="cursor: pointer; font-size: 20px;" onclick="toggleBalanceVisibility()">visibility</span>
+                                        </div>
+                                    </div>
+                                    <span class="material-symbols-outlined" style="font-size: 40px; opacity: 0.2;">payments</span>
+                                </div>
+                                <div style="border-top: 1px solid rgba(255, 255, 255, 0.15); margin-top: 14px; padding-top: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                                    <span id="homeUserVpa" style="font-weight: 600;">tanish@demo</span>
+                                    <div style="display: flex; align-items: center; gap: 4px; cursor: pointer;" onclick="switchView('viewReceive')">
+                                        <span class="material-symbols-outlined" style="font-size: 14px;">qr_code</span> Show QR Code
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Quick Action Buttons -->
+                            <div class="quick-grid">
+                                <div class="quick-item" onclick="showSendView()">
+                                    <div class="quick-icon"><span class="material-symbols-outlined">send_to_mobile</span></div>
+                                    <div class="quick-label">Send Money</div>
+                                </div>
+                                <div class="quick-item" onclick="switchView('viewReceive')">
+                                    <div class="quick-icon" style="background: #E8F5E9; color: #4CAF50;"><span class="material-symbols-outlined">qr_code_2</span></div>
+                                    <div class="quick-label">Receive QR</div>
+                                </div>
+                                <div class="quick-item" onclick="switchView('viewHistory')">
+                                    <div class="quick-icon" style="background: #FFF3E0; color: #FF9800;"><span class="material-symbols-outlined">history</span></div>
+                                    <div class="quick-label">History</div>
+                                </div>
+                                <div class="quick-item" onclick="showMeshView()">
+                                    <div class="quick-icon" style="background: #F3E5F5; color: #9C27B0;"><span class="material-symbols-outlined">hub</span></div>
+                                    <div class="quick-label">Mesh Status</div>
+                                </div>
+                            </div>
+
+                            <!-- Offline Queue & Nearby Devices indicators -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;">
+                                <div style="background: var(--card-grey); border-radius: var(--radius-md); padding: 12px; border: 1px solid var(--border-color); cursor: pointer;" onclick="switchView('viewQueue')">
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span class="material-symbols-outlined" style="color: #9C27B0; font-size: 20px;">queue</span>
+                                        <span style="font-size: 11px; font-weight: 700; color: var(--text-dark);">Offline Queue</span>
+                                    </div>
+                                    <div id="homeQueueCount" style="font-size: 20px; font-weight: 700; color: #9C27B0; margin-top: 4px;">0 Packets</div>
+                                </div>
+                                <div style="background: var(--card-grey); border-radius: var(--radius-md); padding: 12px; border: 1px solid var(--border-color); cursor: pointer;" onclick="showMeshView()">
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <span class="material-symbols-outlined" style="color: #4CAF50; font-size: 20px;">sensors</span>
+                                        <span style="font-size: 11px; font-weight: 700; color: var(--text-dark);">Nearby Nodes</span>
+                                    </div>
+                                    <div id="homeNearbyCount" style="font-size: 20px; font-weight: 700; color: #4CAF50; margin-top: 4px;">4 Active</div>
+                                </div>
+                            </div>
+
+                            <!-- Recent Payments -->
+                            <div style="margin-top: 10px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <span style="font-size: 13px; font-weight: 700;">Recent Transactions</span>
+                                    <span style="font-size: 11px; color: var(--primary); font-weight: 600; cursor: pointer;" onclick="switchView('viewHistory')">See All</span>
+                                </div>
+                                <div id="homeRecentTxList" style="display: flex; flex-direction: column; gap: 8px;">
+                                    <!-- Dynamic list items -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 7. CONTACTS SCREEN -->
+                        <div id="viewContacts" class="screen-view">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; margin-top: 12px;">
+                                <span class="material-symbols-outlined" style="cursor: pointer;" onclick="switchView('viewHome')">arrow_back</span>
+                                <h2 style="font-size: 18px; font-weight: 700;">Select Recipient</h2>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <input type="text" id="contactSearchInput" class="form-input" placeholder="Search contacts or enter VPA..." onkeyup="filterContacts()">
+                            </div>
+                            <div id="contactsListContainer" style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
+                                <!-- Contact items -->
+                            </div>
+                        </div>
+
+                        <!-- 8. SEND MONEY SCREEN -->
+                        <div id="viewSend" class="screen-view">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px; margin-top: 12px;">
+                                <span class="material-symbols-outlined" style="cursor: pointer;" onclick="switchView('viewContacts')">arrow_back</span>
+                                <h2 style="font-size: 18px; font-weight: 700;">Send Money</h2>
+                            </div>
+
+                            <!-- Target Contact Card -->
+                            <div style="display: flex; flex-direction: column; align-items: center; padding: 16px; background: var(--card-grey); border-radius: var(--radius-lg); border: 1px solid var(--border-color); margin-bottom: 16px;">
+                                <div id="sendUserAvatar" class="avatar-circle" style="background: #4CAF50; width: 54px; height: 54px; font-size: 20px; margin-bottom: 8px;">R</div>
+                                <div id="sendUserName" style="font-weight: 700; font-size: 14px;">Rahul Sharma</div>
+                                <div id="sendUserVpa" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">rahul@demo</div>
+                            </div>
+
+                            <!-- Amount Inputs -->
+                            <div class="form-group">
+                                <label>ENTER AMOUNT (INR)</label>
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <span style="position: absolute; left: 16px; font-size: 24px; font-weight: 700;">₹</span>
+                                    <input type="number" id="sendAmount" class="form-input" placeholder="0.00" style="padding-left: 36px; font-size: 24px; font-weight: 700;" value="500">
+                                </div>
+                            </div>
+
+                            <!-- Preset buttons -->
+                            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                                <button class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;" onclick="addPresetAmount(100)">+₹100</button>
+                                <button class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;" onclick="addPresetAmount(500)">+₹500</button>
+                                <button class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;" onclick="addPresetAmount(1000)">+₹1000</button>
+                            </div>
+
+                            <!-- Note Input -->
+                            <div class="form-group" style="margin-bottom: 24px;">
+                                <label>ADD A NOTE</label>
+                                <input type="text" id="sendNote" class="form-input" placeholder="What is this for? e.g., Lunch, Project">
+                            </div>
+
+                            <button class="btn" onclick="showMpinVerification()">Proceed to Pay</button>
+                        </div>
+
+                        <!-- 9. RECEIVE MONEY (QR CODE DISPLAY) -->
+                        <div id="viewReceive" class="screen-view">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px; margin-top: 12px;">
+                                <span class="material-symbols-outlined" style="cursor: pointer;" onclick="switchView('viewHome')">arrow_back</span>
+                                <h2 style="font-size: 18px; font-weight: 700;">Receive Money</h2>
+                            </div>
+
+                            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80%;">
+                                <div style="background: white; border: 1.5px solid var(--border-color); padding: 18px; border-radius: var(--radius-lg); box-shadow: var(--shadow-soft);">
+                                    <!-- Fictional QR Code using SVG -->
+                                    <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                                        <!-- Corners -->
+                                        <rect x="10" y="10" width="40" height="40" fill="none" stroke="#1976D2" stroke-width="6"/>
+                                        <rect x="20" y="20" width="20" height="20" fill="#1976D2"/>
+                                        <rect x="150" y="10" width="40" height="40" fill="none" stroke="#1976D2" stroke-width="6"/>
+                                        <rect x="160" y="20" width="20" height="20" fill="#1976D2"/>
+                                        <rect x="10" y="150" width="40" height="40" fill="none" stroke="#1976D2" stroke-width="6"/>
+                                        <rect x="20" y="160" width="20" height="20" fill="#1976D2"/>
+                                        
+                                        <!-- Random Pixel Blocks to simulate QR -->
+                                        <rect x="70" y="30" width="20" height="20" fill="#212121"/>
+                                        <rect x="110" y="30" width="10" height="30" fill="#212121"/>
+                                        <rect x="80" y="70" width="30" height="20" fill="#212121"/>
+                                        <rect x="130" y="70" width="20" height="20" fill="#212121"/>
+                                        <rect x="70" y="110" width="40" height="10" fill="#212121"/>
+                                        <rect x="60" y="130" width="20" height="30" fill="#212121"/>
+                                        <rect x="100" y="140" width="40" height="30" fill="#212121"/>
+                                        <rect x="150" y="110" width="30" height="40" fill="#212121"/>
+                                        <rect x="160" y="160" width="20" height="20" fill="#212121"/>
+                                    </svg>
+                                </div>
+                                <h3 id="receiveName" style="font-size: 16px; font-weight: 700; margin-top: 16px;">Tanish</h3>
+                                <p id="receiveVpa" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">tanish@demo</p>
+                                <p style="font-size: 10px; color: var(--text-muted); margin-top: 24px; text-align: center; max-width: 80%;">
+                                    Scan this demo QR to route secure Bluetooth mesh payments.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- 10. SECURE MPIN & BIOMETRICS VIEW -->
+                        <div id="viewMpin" class="screen-view" style="justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px;">
+                                <span class="material-symbols-outlined" style="cursor: pointer;" onclick="switchView('viewSend')">arrow_back</span>
+                                <h2 style="font-size: 16px; font-weight: 700;">Enter Security Code</h2>
+                            </div>
+
+                            <div style="text-align: center; margin: 20px 0;">
+                                <p style="font-size: 13px; color: var(--text-muted);">Enter 4-Digit UPI MPIN</p>
+                                <div style="display: flex; justify-content: center; gap: 14px; margin-top: 16px;">
+                                    <div class="pin-dot" style="width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--border-color);"></div>
+                                    <div class="pin-dot" style="width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--border-color);"></div>
+                                    <div class="pin-dot" style="width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--border-color);"></div>
+                                    <div class="pin-dot" style="width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--border-color);"></div>
+                                </div>
+                            </div>
+
+                            <!-- Biometric Touch Prompt -->
+                            <div style="text-align: center;" onclick="triggerBiometricSimulation()">
+                                <span class="material-symbols-outlined" style="font-size: 48px; color: var(--primary); cursor: pointer;">fingerprint</span>
+                                <p style="font-size: 11px; color: var(--primary); font-weight: 600; cursor: pointer; margin-top: 4px;">Simulate Fingerprint Biometrics</p>
+                            </div>
+
+                            <!-- Keypad -->
+                            <div class="pin-keypad">
+                                <button class="keypad-btn" onclick="pressPinKey('1')">1</button>
+                                <button class="keypad-btn" onclick="pressPinKey('2')">2</button>
+                                <button class="keypad-btn" onclick="pressPinKey('3')">3</button>
+                                <button class="keypad-btn" onclick="pressPinKey('4')">4</button>
+                                <button class="keypad-btn" onclick="pressPinKey('5')">5</button>
+                                <button class="keypad-btn" onclick="pressPinKey('6')">6</button>
+                                <button class="keypad-btn" onclick="pressPinKey('7')">7</button>
+                                <button class="keypad-btn" onclick="pressPinKey('8')">8</button>
+                                <button class="keypad-btn" onclick="pressPinKey('9')">9</button>
+                                <button class="keypad-btn" onclick="clearPinKey()"><span class="material-symbols-outlined">backspace</span></button>
+                                <button class="keypad-btn" onclick="pressPinKey('0')">0</button>
+                                <button class="keypad-btn" onclick="submitMpin()"><span class="material-symbols-outlined" style="color: var(--accent);">check_circle</span></button>
+                            </div>
+                        </div>
+
+                        <!-- 11. TIMELINE SCREEN -->
+                        <div id="viewTimeline" class="screen-view">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; margin-top: 12px;">
+                                <h2 style="font-size: 18px; font-weight: 700;">Transaction Timeline</h2>
+                            </div>
+                            
+                            <div style="background: var(--card-grey); border-radius: var(--radius-md); padding: 12px; border: 1px solid var(--border-color); font-size: 11px; margin-bottom: 16px;">
+                                <strong>Secure Offline Packet Generated!</strong>
+                                <div style="margin-top: 4px; color: var(--text-muted); font-size: 10px; word-break: break-all;">
+                                    Packet ID: <span id="timelinePacketId">loading...</span>
+                                </div>
+                            </div>
+
+                            <!-- Timeline List -->
+                            <div class="timeline" id="timelineList">
+                                <div class="timeline-item" id="timeStep1"><div class="timeline-marker"></div>Initializing Payment...</div>
+                                <div class="timeline-item" id="timeStep2"><div class="timeline-marker"></div>Generating AES-GCM Ciphertext...</div>
+                                <div class="timeline-item" id="timeStep3"><div class="timeline-marker"></div>Wrapping Key with RSA-OAEP-2048...</div>
+                                <div class="timeline-item" id="timeStep4"><div class="timeline-marker"></div>Injecting Packet into local mesh device...</div>
+                                <div class="timeline-item" id="timeStep5"><div class="timeline-marker"></div>Broadcasting to nearby nodes (Gossip)...</div>
+                                <div class="timeline-item" id="timeStep6"><div class="timeline-marker"></div>Propagated to phone-riya-bridge (Hop 1)...</div>
+                                <div class="timeline-item" id="timeStep7"><div class="timeline-marker"></div>Bridge walks outside, gets internet (4G)...</div>
+                                <div class="timeline-item" id="timeStep8"><div class="timeline-marker"></div>Uploading payload to backend (mTLS)...</div>
+                                <div class="timeline-item" id="timeStep9"><div class="timeline-marker"></div>Ledger transaction settlement check...</div>
+                                <div class="timeline-item" id="timeStep10"><div class="timeline-marker"></div>Payment Successful!</div>
+                            </div>
+
+                            <button id="timelineActionBtn" class="btn" style="display:none;" onclick="switchView('viewSuccess')">View Receipt</button>
+                        </div>
+
+                        <!-- 12. SUCCESS SCREEN -->
+                        <div id="viewSuccess" class="screen-view" style="justify-content: center; align-items: center;">
+                            <div class="success-checkmark">
+                                <div class="checkmark">
+                                    <div class="checkmark__circle"></div>
+                                    <div class="checkmark__check"></div>
+                                </div>
+                            </div>
+                            
+                            <h2 style="font-size: 20px; font-weight: 700; color: var(--accent); margin-top: 8px;">Payment Successful</h2>
+                            <h1 id="successAmountVal" style="font-size: 32px; font-weight: 800; margin-top: 6px;">₹500.00</h1>
+                            
+                            <div style="width: 100%; border-top: 1px dashed var(--border-color); margin: 20px 0; padding-top: 16px;">
+                                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px;">
+                                    <span style="color: var(--text-muted)">Recipient Name:</span>
+                                    <span id="successRecipName" style="font-weight: 600">Rahul Sharma</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px;">
+                                    <span style="color: var(--text-muted)">Reference No:</span>
+                                    <span id="successRefNum" style="font-family: monospace; font-weight: 600">TXN9283749</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px;">
+                                    <span style="color: var(--text-muted)">Hop Count:</span>
+                                    <span id="successHops" style="font-weight: 600">1 Hop</span>
+                                </div>
+                            </div>
+
+                            <button class="btn" onclick="showReceiptView()">Download PDF Receipt</button>
+                            <button class="btn btn-secondary" style="margin-top: 10px;" onclick="switchView('viewHome')">Return Home</button>
+                        </div>
+
+                        <!-- 13. RECEIPT SCREEN -->
+                        <div id="viewReceipt" class="screen-view">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; margin-top: 12px;">
+                                <span class="material-symbols-outlined" style="cursor: pointer;" onclick="switchView('viewHome')">arrow_back</span>
+                                <h2 style="font-size: 18px; font-weight: 700;">Payment Receipt</h2>
+                            </div>
+
+                            <!-- Styled receipt container -->
+                            <div id="receiptCanvasSource" style="background: var(--card-grey); border: 1.5px solid var(--border-color); border-radius: var(--radius-lg); padding: 18px; position: relative;">
+                                <div style="text-align: center; border-bottom: 1.5px dashed var(--border-color); padding-bottom: 14px; margin-bottom: 14px;">
+                                    <span class="material-symbols-outlined" style="font-size: 36px; color: var(--primary)">verified</span>
+                                    <h3 style="font-size: 15px; font-weight: 700; margin-top: 6px;">OFFLINE UPI TRANSACTION</h3>
+                                    <span style="font-size: 9px; color: var(--text-muted);">Demo Environment Alert</span>
+                                </div>
+                                
+                                <div style="display: flex; flex-direction: column; gap: 10px; font-size: 11px;">
+                                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted)">Sender:</span><span id="recSenderVpa">tanish@demo</span></div>
+                                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted)">Receiver:</span><span id="recReceiverVpa">rahul@demo</span></div>
+                                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted)">Amount:</span><strong id="recAmount">₹500.00</strong></div>
+                                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted)">Txn ID:</span><span id="recTxnId" style="font-family: monospace;">TXN10293</span></div>
+                                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted)">Packet Hash:</span><span id="recPacketHash" style="font-family: monospace; font-size: 9px;">loading...</span></div>
+                                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted)">Date & Time:</span><span id="recDateTime">loading...</span></div>
+                                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted)">Mesh Path:</span><span>phone-tanish → bridge → backend</span></div>
+                                    <div style="display: flex; justify-content: space-between;"><span style="color: var(--text-muted)">Status:</span><span style="color: var(--accent); font-weight: 700;">SETTLED</span></div>
+                                </div>
+
+                                <div style="margin-top: 20px; display: flex; justify-content: center;">
+                                    <!-- mini QR representation inside receipt -->
+                                    <svg width="80" height="80" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                                        <rect x="5" y="5" width="20" height="20" fill="none" stroke="#1976D2" stroke-width="3"/>
+                                        <rect x="75" y="5" width="20" height="20" fill="none" stroke="#1976D2" stroke-width="3"/>
+                                        <rect x="5" y="75" width="20" height="20" fill="none" stroke="#1976D2" stroke-width="3"/>
+                                        <rect x="30" y="30" width="40" height="40" fill="#212121"/>
+                                        <rect x="50" y="10" width="10" height="20" fill="#212121"/>
+                                        <rect x="10" y="50" width="20" height="10" fill="#212121"/>
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <button class="btn" style="margin-top: 16px;" onclick="downloadPdf()">Save Receipt to PDF</button>
+                            <button class="btn btn-secondary" style="margin-top: 10px;" onclick="switchView('viewHome')">Done</button>
+                        </div>
+
+                        <!-- 14. OFFLINE QUEUE SCREEN -->
+                        <div id="viewQueue" class="screen-view">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; margin-top: 12px;">
+                                <span class="material-symbols-outlined" style="cursor: pointer;" onclick="switchView('viewHome')">arrow_back</span>
+                                <h2 style="font-size: 18px; font-weight: 700;">Offline Packet Queue</h2>
+                            </div>
+
+                            <div style="background: var(--card-grey); border-radius: var(--radius-md); padding: 12px; font-size: 11px; margin-bottom: 16px; border: 1px solid var(--border-color);">
+                                When offline, payment transactions are secured using hybrid keys and saved locally. They are automatically uploaded once a connection is detected.
+                            </div>
+
+                            <div id="offlineQueueContainer" style="display: flex; flex-direction: column; gap: 10px;">
+                                <!-- Local packets -->
+                            </div>
+                        </div>
+
+                        <!-- 15. TRANSACTION HISTORY -->
+                        <div id="viewHistory" class="screen-view">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; margin-top: 12px;">
+                                <span class="material-symbols-outlined" style="cursor: pointer;" onclick="switchView('viewHome')">arrow_back</span>
+                                <h2 style="font-size: 18px; font-weight: 700;">Transaction History</h2>
+                            </div>
+
+                            <!-- Filter Chips -->
+                            <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px;">
+                                <button class="console-tab active" style="padding: 4px 10px; font-size: 11px;" onclick="filterHistory('ALL')">All</button>
+                                <button class="console-tab" style="padding: 4px 10px; font-size: 11px;" onclick="filterHistory('SETTLED')">Settled</button>
+                                <button class="console-tab" style="padding: 4px 10px; font-size: 11px;" onclick="filterHistory('REJECTED')">Rejected</button>
+                                <button class="console-tab" style="padding: 4px 10px; font-size: 11px;" onclick="filterHistory('DUPLICATE')">Duplicates</button>
+                            </div>
+
+                            <div id="fullHistoryContainer" style="display: flex; flex-direction: column; gap: 8px;">
+                                <!-- History list items -->
+                            </div>
+                        </div>
+
+                        <!-- 16. NOTIFICATIONS INBOX -->
+                        <div id="viewNotifications" class="screen-view">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px; margin-top: 12px;">
+                                <span class="material-symbols-outlined" style="cursor: pointer;" onclick="switchView('viewHome')">arrow_back</span>
+                                <h2 style="font-size: 18px; font-weight: 700;">Notifications</h2>
+                            </div>
+
+                            <div id="notificationsContainer" style="display: flex; flex-direction: column; gap: 8px;">
+                                <!-- notification lists -->
+                            </div>
+                        </div>
+
+                        <!-- 17. SETTINGS & PROFILE -->
+                        <div id="viewSettings" class="screen-view">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px; margin-top: 12px;">
+                                <span class="material-symbols-outlined" style="cursor: pointer;" onclick="switchView('viewHome')">arrow_back</span>
+                                <h2 style="font-size: 18px; font-weight: 700;">Settings & Profile</h2>
+                            </div>
+
+                            <div style="display: flex; flex-direction: column; align-items: center; padding: 16px; background: var(--card-grey); border-radius: var(--radius-lg); border: 1px solid var(--border-color); margin-bottom: 16px;">
+                                <div id="settingsAvatar" class="avatar-circle" style="background: var(--primary); width: 64px; height: 64px; font-size: 24px; margin-bottom: 8px;">T</div>
+                                <h3 id="settingsName" style="font-weight: 700; font-size: 16px;">Tanish</h3>
+                                <p id="settingsVpa" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">tanish@demo</p>
+                                <p id="settingsPhone" style="font-size: 11px; color: var(--text-muted);">Phone: 9876543210</p>
+                            </div>
+
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--card-grey); border-radius: var(--radius-md); border: 1px solid var(--border-color); cursor: pointer;" onclick="resetDemoData()">
+                                    <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--danger)">
+                                        <span class="material-symbols-outlined">restart_alt</span> Reset Demo Data
+                                    </div>
+                                    <span class="material-symbols-outlined" style="font-size: 16px;">chevron_right</span>
+                                </div>
+
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--card-grey); border-radius: var(--radius-md); border: 1px solid var(--border-color); cursor: pointer;" onclick="logout()">
+                                    <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600;">
+                                        <span class="material-symbols-outlined">logout</span> Logout
+                                    </div>
+                                    <span class="material-symbols-outlined" style="font-size: 16px;">chevron_right</span>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div> <!-- End PHONE VIEWS -->
+
+                    <!-- Home Nav Bar -->
+                    <div class="phone-home-bar">
+                        <div class="home-indicator" onclick="switchView('viewHome')"></div>
+                    </div>
+                </div>
+            </div> <!-- End Phone Frame -->
+
+            <!-- Biometric Scanning animation overlay -->
+            <div id="biometricModal" class="bio-modal" style="display: none;">
+                <div class="bio-card">
+                    <span class="material-symbols-outlined bio-icon-pulse">fingerprint</span>
+                    <h3 style="font-size: 15px; font-weight: 700;">Fingerprint Verification</h3>
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Place finger on sensor to sign transaction packet</p>
+                    <button class="btn btn-secondary" style="margin-top: 16px; padding: 8px;" onclick="cancelBiometric()">Cancel</button>
+                </div>
+            </div>
+
+        </div> <!-- End PHONE SECTION -->
+
+        
+        <!-- ==================== RIGHT SIDE: DEVELOPER MONITOR & MESH TOPOLOGY ==================== -->
+        <div class="console-section">
+            
+            <div class="console-header">
+                <h2><span class="material-symbols-outlined">analytics</span> Presentation & Simulator Supervisor</h2>
+                <div style="font-size: 11px; background: #2D3748; padding: 4px 8px; border-radius: 4px; color: #48BB78; font-weight: bold;">
+                    Server: online (8080)
+                </div>
+            </div>
+
+            <!-- Tab Controls -->
+            <div class="console-tabs">
+                <button id="tabBtnMesh" class="console-tab active" onclick="switchConsoleTab('mesh')">Bluetooth Mesh Topology</button>
+                <button id="tabBtnDb" class="console-tab" onclick="switchConsoleTab('db')">Simulated DB Explorer</button>
+                <button id="tabBtnCrypto" class="console-tab" onclick="switchConsoleTab('crypto')">Server Encryption Pipeline</button>
+                <button id="tabBtnClassroom" class="console-tab" onclick="switchConsoleTab('classroom')">Security Classroom</button>
+            </div>
+
+            <!-- Tab 1: Mesh Map -->
+            <div id="consoleTabMesh" class="console-content" style="display: flex; flex-direction: column;">
+                <h3 style="font-size: 13px; font-weight: 700; margin-bottom: 10px; color: #63B3ED;">Interactive BLE Gossip Grid</h3>
+                
+                <!-- Live SVG Mesh Network Map -->
+                <div class="mesh-graph">
+                    <svg width="100%" height="100%" style="position: absolute; top:0; left:0;">
+                        <!-- Node Connections lines -->
+                        <line id="line-tanish-rahul" class="mesh-link" x1="60" y1="140" x2="160" y2="70"/>
+                        <line id="line-tanish-priya" class="mesh-link" x1="60" y1="140" x2="160" y2="210"/>
+                        <line id="line-rahul-aman" class="mesh-link" x1="160" y1="70" x2="260" y2="70"/>
+                        <line id="line-priya-aman" class="mesh-link" x1="160" y1="210" x2="260" y2="210"/>
+                        <line id="line-aman-bridge" class="mesh-link" x1="260" y1="70" x2="380" y2="140"/>
+                        <line id="line-priya-bridge" class="mesh-link" x1="160" y1="210" x2="380" y2="140"/>
+                        <line id="line-bridge-backend" class="mesh-link" x1="380" y1="140" x2="480" y2="140" stroke="#48BB78" stroke-width="3"/>
+                    </svg>
+
+                    <!-- User Nodes -->
+                    <!-- Tanish (Sender) -->
+                    <div id="node-tanish" class="mesh-node" style="left: 30px; top: 110px;">
+                        <div style="background: #1976D2; width: 24px; height: 24px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; margin-bottom: 2px;">T</div>
+                        Tanish
+                        <div class="mesh-node-label" id="pkt-tanish">0 pkts</div>
+                    </div>
+
+                    <!-- Rahul (Hop Intermediary) -->
+                    <div id="node-rahul" class="mesh-node" style="left: 130px; top: 40px;">
+                        <div style="background: #E53935; width: 24px; height: 24px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; margin-bottom: 2px;">R</div>
+                        Rahul
+                        <div class="mesh-node-label" id="pkt-rahul">0 pkts</div>
+                    </div>
+
+                    <!-- Priya (Hop Intermediary) -->
+                    <div id="node-priya" class="mesh-node" style="left: 130px; top: 180px;">
+                        <div style="background: #8E24AA; width: 24px; height: 24px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; margin-bottom: 2px;">P</div>
+                        Priya
+                        <div class="mesh-node-label" id="pkt-priya">0 pkts</div>
+                    </div>
+
+                    <!-- Aman (Hop Intermediary) -->
+                    <div id="node-aman" class="mesh-node" style="left: 230px; top: 40px;">
+                        <div style="background: #FDD835; color: black; width: 24px; height: 24px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; margin-bottom: 2px;">A</div>
+                        Aman
+                        <div class="mesh-node-label" id="pkt-aman">0 pkts</div>
+                    </div>
+
+                    <!-- Riya Bridge -->
+                    <div id="node-riya-bridge" class="mesh-node bridge" style="left: 350px; top: 110px;">
+                        <div style="background: #3949AB; width: 24px; height: 24px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; margin-bottom: 2px;">R</div>
+                        Riya-B
+                        <div class="mesh-node-label" id="pkt-riya">0 pkts</div>
+                    </div>
+
+                    <!-- Core Bank Server -->
+                    <div class="mesh-node bridge" style="left: 450px; top: 110px; border-color: #48BB78; background: #1C3D2B;">
+                        <span class="material-symbols-outlined" style="font-size: 20px; color: #48BB78; margin-bottom: 2px;">dns</span>
+                        Bank Server
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <button class="btn" style="flex: 1; padding: 10px; font-size: 12px; background: #3182CE;" onclick="triggerMeshGossipRound()">🔄 Trigger Gossip Round</button>
+                    <button class="btn" style="flex: 1; padding: 10px; font-size: 12px; background: #38A169;" onclick="triggerMeshBridgeFlush()">📡 Upload Bridge Packets</button>
+                    <button class="btn btn-secondary" style="padding: 10px; font-size: 12px; color: white; background: #E53E3E; border: none;" onclick="triggerResetMesh()">🗑 Reset Grid</button>
+                </div>
+
+                <!-- Simulation Info logs -->
+                <h4 style="font-size: 12px; font-weight: 700; color: #A0AEC0; margin-bottom: 6px;">Live Simulation Activities</h4>
+                <div id="consoleTerminalLog" style="flex: 1; background: #1A202C; border-radius: var(--radius-md); padding: 12px; font-family: monospace; overflow-y: auto; max-height: 180px; border: 1px solid #4A5568;">
+                    <div class="terminal-log">[SYSTEM LOGS INITIATED] Waiting for transaction packets...</div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Databases -->
+            <div id="consoleTabDb" class="console-content" style="display: none;">
+                <h3 style="font-size: 13px; font-weight: 700; margin-bottom: 10px; color: #63B3ED;">Real-time Backend Database Explorer</h3>
+                
+                <div style="margin-bottom: 16px;">
+                    <h4 style="font-size: 12px; font-weight: 700; color: #A0AEC0;">Bank Accounts Table (H2 In-Memory)</h4>
+                    <table class="db-table" id="dbAccountsTable">
+                        <thead>
+                            <tr><th>VPA</th><th>Holder Name</th><th>Simulated Balance</th></tr>
+                        </thead>
+                        <tbody>
+                            <!-- Seed accounts -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div>
+                    <h4 style="font-size: 12px; font-weight: 700; color: #A0AEC0;">Settled Ledger (Transactions Table)</h4>
+                    <div style="overflow-x: auto;">
+                        <table class="db-table" id="dbTransactionsTable">
+                            <thead>
+                                <tr><th>ID</th><th>From</th><th>To</th><th>Amount</th><th>Status</th><th>Hops</th><th>Bridge</th></tr>
+                            </thead>
+                            <tbody>
+                                <!-- Seed transactions -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 3: Crypto Process Visualizer -->
+            <div id="consoleTabCrypto" class="console-content" style="display: none;">
+                <h3 style="font-size: 13px; font-weight: 700; margin-bottom: 10px; color: #63B3ED;">Server-Side Cryptographic Ingestion</h3>
+                <p style="font-size: 11px; color: #A0AEC0; margin-bottom: 16px;">
+                    This maps the internal pipeline execution of the backend on receiving a base64 encrypted payment instruction.
+                </p>
+
+                <!-- Processing Stepper -->
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div id="cryptoStep1" style="border: 1px solid #4A5568; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 10px;">
+                        <span class="material-symbols-outlined" style="color: #4A5568;">tag</span>
+                        <div>
+                            <div style="font-weight: bold; font-size: 12px;">Step 1: Compute SHA-256 Hash of Ciphertext</div>
+                            <div style="font-size: 10px; color: #A0AEC0;">Generates an immutable fingerprint of the payload block.</div>
+                        </div>
+                    </div>
+                    <div id="cryptoStep2" style="border: 1px solid #4A5568; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 10px;">
+                        <span class="material-symbols-outlined" style="color: #4A5568;">key_visualizer</span>
+                        <div>
+                            <div style="font-weight: bold; font-size: 12px;">Step 2: Idempotency Claim Check</div>
+                            <div style="font-size: 10px; color: #A0AEC0;">Atomically queries cache table (ConcurrentHashMap putIfAbsent). Duplicates drop immediately.</div>
+                        </div>
+                    </div>
+                    <div id="cryptoStep3" style="border: 1px solid #4A5568; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 10px;">
+                        <span class="material-symbols-outlined" style="color: #4A5568;">vpn_key</span>
+                        <div>
+                            <div style="font-weight: bold; font-size: 12px;">Step 3: RSA-2048 OAEP Private Key Decrypt</div>
+                            <div style="font-size: 10px; color: #A0AEC0;">Unwraps the specific AES symmetric key generated by the sender's phone.</div>
+                        </div>
+                    </div>
+                    <div id="cryptoStep4" style="border: 1px solid #4A5568; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 10px;">
+                        <span class="material-symbols-outlined" style="color: #4A5568;">security</span>
+                        <div>
+                            <div style="font-weight: bold; font-size: 12px;">Step 4: AES-256-GCM Payload Decryption & Tag Verify</div>
+                            <div style="font-size: 10px; color: #A0AEC0;">Decrypts data and checks Authentication Tag. Flips trigger decryption failure!</div>
+                        </div>
+                    </div>
+                    <div id="cryptoStep5" style="border: 1px solid #4A5568; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 10px;">
+                        <span class="material-symbols-outlined" style="color: #4A5568;">schedule</span>
+                        <div>
+                            <div style="font-weight: bold; font-size: 12px;">Step 5: Freshness check (Replay Protection)</div>
+                            <div style="font-size: 10px; color: #A0AEC0;">Validates that payload was signedAt within the last 24h.</div>
+                        </div>
+                    </div>
+                    <div id="cryptoStep6" style="border: 1px solid #4A5568; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 10px;">
+                        <span class="material-symbols-outlined" style="color: #4A5568;">account_balance</span>
+                        <div>
+                            <div style="font-weight: bold; font-size: 12px;">Step 6: Atomic Settlement Ledger Entry</div>
+                            <div style="font-size: 10px; color: #A0AEC0;">Performs SQL Transaction to debit sender, credit receiver, and add a ledger line.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 4: Security Classroom -->
+            <div id="consoleTabClassroom" class="console-content" style="display: none; font-size: 12px; line-height: 1.6;">
+                <h3 style="font-size: 14px; font-weight: 700; margin-bottom: 12px; color: #63B3ED;">Academic Presentation Study Guide</h3>
+                
+                <div style="background: #1A202C; padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid #3182CE;">
+                    <strong>Hybrid Cryptography Scheme (RSA + AES-GCM)</strong><br>
+                    1. RSA asymmetric algorithms can only encrypt blocks smaller than their key size (e.g. 245 bytes for RSA-2048).<br>
+                    2. Plain text JSON payload is encrypted with a highly efficient symmetric <strong>AES-256-GCM</strong> key.<br>
+                    3. This AES session key is then encrypted with the Server's <strong>RSA Public Key</strong>.<br>
+                    4. They are packed together into the <strong>MeshPacket.ciphertext</strong>.<br>
+                    5. Intermediary nodes route the payload blindly; only the server holds the <strong>RSA Private Key</strong> to unlock the key and read details.
+                </div>
+
+                <div style="background: #1A202C; padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid #4CAF50;">
+                    <strong>Deduplication & Idempotency (SHA-256 Gate)</strong><br>
+                    1. When bridges upload mesh packets, duplicates will storm the server concurrently.<br>
+                    2. The backend generates a SHA-256 hash of the ciphertext and attempts to store it in a cache atomically (`putIfAbsent`).<br>
+                    3. The first packet locks the claim, settling the payment. Secondary threads are dropped without decrypting, preventing double debits!
+                </div>
+
+                <div style="background: #1A202C; padding: 12px; border-radius: 8px; border-left: 4px solid #FF9800;">
+                    <strong>Replay protection</strong><br>
+                    1. Stale capture payloads are blocked via internal encrypted timestamps (`signedAt`) validating packet freshness window.
+                </div>
+            </div>
+
+        </div> <!-- End CONSOLE SECTION -->
+
+    </div> <!-- End Workspace -->
+
+    <!-- FLOATING CONTROLLER BAR FOR PRESENTER DEMO -->
+    <div class="demo-control-bar">
+        <span style="color: #63B3ED; font-weight: 700; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined" style="font-size: 18px;">slideshow</span> Presentation Panel
+        </span>
+        <button class="btn" style="padding: 8px 16px; font-size: 11px; background: #38A169; width: auto; box-shadow: none;" onclick="runAutomatedDemo()">
+            ▶ Run Complete Demo
+        </button>
+    </div>
+
+    <!-- ==================== JAVASCRIPT LOGIC ==================== -->
+    <script>
+        // Global variables
+        let currentUser = null;
+        let selectedRecipient = null;
+        let generatedPacket = null;
+        let localQueue = [];
+        let networkOnline = true;
+        let bluetoothOn = false;
+        let accountsMap = {};
+        let activeRegAvatar = "#1976D2";
+        let isBalanceVisible = true;
+        let pinBuffer = "";
+        let demoModeRunning = false;
+
+        // Predefined Contacts avatars / settings
+        const demoContacts = [
+            { name: "Rahul Sharma", vpa: "rahul@demo", phone: "9876543210", color: "#E53935", balance: 8000.00 },
+            { name: "Priya", vpa: "priya@demo", phone: "9876501234", color: "#8E24AA", balance: 3000.00 },
+            { name: "Aman", vpa: "aman@demo", phone: "9123456789", color: "#FDD835", balance: 1500.00 },
+            { name: "Riya", vpa: "riya@demo", phone: "9567812340", color: "#3949AB", balance: 6000.00 },
+            { name: "Tanish", vpa: "tanish@demo", phone: "9988776655", color: "#1E88E5", balance: 5000.00 }
+        ];
+
+        // Init function
+        window.addEventListener('DOMContentLoaded', () => {
+            // Update phone time
+            updateTime();
+            setInterval(updateTime, 60000);
+
+            // Fetch balances and state initially
+            fetchBackendState();
+            setInterval(fetchBackendState, 2000);
+
+            // Redirect to Login page after Splash
+            setTimeout(() => {
+                switchView('viewLogin');
+            }, 2000);
+        });
+
+        function updateTime() {
+            const now = new Date();
+            const hrs = String(now.getHours()).padStart(2, '0');
+            const mins = String(now.getMinutes()).padStart(2, '0');
+            document.getElementById('phoneTime').textContent = `${hrs}:${mins}`;
+        }
+
+        // View Switching helper
+        function switchView(viewId) {
+            document.querySelectorAll('.screen-view').forEach(view => {
+                view.classList.remove('active');
+            });
+            const targetView = document.getElementById(viewId);
+            if (targetView) {
+                targetView.classList.add('active');
+            }
+        }
+
+        // Console Tab Switcher
+        function switchConsoleTab(tabName) {
+            document.querySelectorAll('.console-tab').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.console-content').forEach(c => c.style.display = 'none');
+
+            if (tabName === 'mesh') {
+                document.getElementById('tabBtnMesh').classList.add('active');
+                document.getElementById('consoleTabMesh').style.display = 'flex';
+            } else if (tabName === 'db') {
+                document.getElementById('tabBtnDb').classList.add('active');
+                document.getElementById('consoleTabDb').style.display = 'block';
+            } else if (tabName === 'crypto') {
+                document.getElementById('tabBtnCrypto').classList.add('active');
+                document.getElementById('consoleTabCrypto').style.display = 'block';
+            } else if (tabName === 'classroom') {
+                document.getElementById('tabBtnClassroom').classList.add('active');
+                document.getElementById('consoleTabClassroom').style.display = 'block';
+            }
+        }
+
+        // Add System terminal log
+        function appendTerminalLog(msg, isSuccess = false) {
+            const logs = document.getElementById('consoleTerminalLog');
+            const line = document.createElement('div');
+            line.className = 'terminal-log';
+            if (isSuccess) line.style.color = '#63B3ED';
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logs.appendChild(line);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        // Toggles
+        function toggleBluetooth() {
+            const isChecked = document.getElementById('bluetoothToggle').checked;
+            bluetoothOn = isChecked;
+            const label = document.getElementById('bluetoothStatusLabel');
+            const icon = document.getElementById('bluetoothStatusIcon');
+            if (isChecked) {
+                label.textContent = "ON (MESH)";
+                label.style.color = "var(--accent)";
+                icon.textContent = "bluetooth";
+                icon.style.color = "var(--primary)";
+                appendTerminalLog("Bluetooth Mesh adapter enabled on phone mockup. Beacon state: BROADCASTING.");
+            } else {
+                label.textContent = "OFFLINE";
+                label.style.color = "var(--danger)";
+                icon.textContent = "bluetooth_disabled";
+                icon.style.color = "var(--text-muted)";
+                appendTerminalLog("Bluetooth Mesh adapter disabled.");
+            }
+        }
+
+        function toggleInternet() {
+            const isChecked = document.getElementById('internetToggle').checked;
+            networkOnline = isChecked;
+            const label = document.getElementById('internetStatusLabel');
+            const icon = document.getElementById('networkStatusIcon');
+            if (isChecked) {
+                label.textContent = "4G/WIFI";
+                label.style.color = "var(--accent)";
+                icon.textContent = "wifi";
+                appendTerminalLog("Active Internet (4G/WiFi) Connection Restored.");
+                // Process local queue if online
+                processOfflineQueue();
+            } else {
+                label.textContent = "OFFLINE";
+                label.style.color = "var(--danger)";
+                icon.textContent = "wifi_off";
+                appendTerminalLog("Internet connection lost. Switched device to OFFLINE mode.");
+            }
+        }
+
+        // Balance eyeball
+        function toggleBalanceVisibility() {
+            isBalanceVisible = !isBalanceVisible;
+            const balVal = document.getElementById('homeBalanceVal');
+            const eyeIcon = document.getElementById('balanceEyeIcon');
+            if (isBalanceVisible) {
+                if (currentUser) {
+                    balVal.textContent = `₹${parseFloat(currentUser.balance).toFixed(2)}`;
+                }
+                eyeIcon.textContent = "visibility";
+            } else {
+                balVal.textContent = "₹••••••";
+                eyeIcon.textContent = "visibility_off";
+            }
+        }
+
+        // Fetch accounts and state from Spring Boot Backend
+        async function fetchBackendState() {
+            try {
+                // Fetch accounts
+                const accounts = await fetch('/api/accounts').then(res => res.json());
+                accountsMap = {};
+                accounts.forEach(acc => {
+                    accountsMap[acc.vpa] = acc;
+                });
+
+                // Update database explorer panel
+                const dbAccsBody = document.querySelector('#dbAccountsTable tbody');
+                dbAccsBody.innerHTML = accounts.map(a => `
+                    <tr>
+                        <td><strong>${a.vpa}</strong></td>
+                        <td>${a.holderName}</td>
+                        <td style="color:#48BB78;font-weight:700;">₹${parseFloat(a.balance).toFixed(2)}</td>
+                    </tr>
+                `).join('');
+
+                // Update current user balance if logged in
+                if (currentUser && accountsMap[currentUser.vpa]) {
+                    currentUser.balance = accountsMap[currentUser.vpa].balance;
+                    if (isBalanceVisible) {
+                        document.getElementById('homeBalanceVal').textContent = `₹${parseFloat(currentUser.balance).toFixed(2)}`;
+                    }
+                }
+
+                // Fetch transactions
+                const transactions = await fetch('/api/transactions').then(res => res.json());
+                const dbTxsBody = document.querySelector('#dbTransactionsTable tbody');
+                dbTxsBody.innerHTML = transactions.map(t => `
+                    <tr>
+                        <td>${t.id}</td>
+                        <td>${t.senderVpa}</td>
+                        <td>${t.receiverVpa}</td>
+                        <td>₹${parseFloat(t.amount).toFixed(2)}</td>
+                        <td style="color:${t.status === 'SETTLED' ? '#48BB78' : '#F56565'}; font-weight:bold;">${t.status}</td>
+                        <td>${t.hopCount}</td>
+                        <td>${t.bridgeNodeId}</td>
+                    </tr>
+                `).join('');
+
+                // Update recent transactions in Mobile Dashboard
+                if (currentUser) {
+                    const myTxs = transactions.filter(t => t.senderVpa === currentUser.vpa || t.receiverVpa === currentUser.vpa).slice(0, 3);
+                    const listContainer = document.getElementById('homeRecentTxList');
+                    if (myTxs.length === 0) {
+                        listContainer.innerHTML = `<div style="font-size:11px; text-align:center; padding:12px; color:var(--text-muted);">No transactions yet</div>`;
+                    } else {
+                        listContainer.innerHTML = myTxs.map(t => {
+                            const isDebit = t.senderVpa === currentUser.vpa;
+                            const labelName = isDebit ? t.receiverVpa : t.senderVpa;
+                            return `
+                                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card-grey); padding:10px 14px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <span class="material-symbols-outlined" style="color:${isDebit ? 'var(--danger)' : 'var(--accent)'}; font-size:20px;">
+                                            ${isDebit ? 'arrow_outward' : 'arrow_downward'}
+                                        </span>
+                                        <div>
+                                            <div style="font-size:12px; font-weight:700;">${labelName}</div>
+                                            <div style="font-size:9px; color:var(--text-muted);">${new Date(t.settledAt).toLocaleTimeString()}</div>
+                                        </div>
+                                    </div>
+                                    <div style="font-size:13px; font-weight:700; color:${isDebit ? 'var(--text-dark)' : 'var(--accent)'}">
+                                        ${isDebit ? '-' : '+'}₹${parseFloat(t.amount).toFixed(2)}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                }
+
+                // Fetch mesh state
+                const meshState = await fetch('/api/mesh/state').then(res => res.json());
+                document.getElementById('pkt-tanish').textContent = `${meshState.devices.find(d => d.deviceId === 'phone-tanish')?.packetCount || 0} pkts`;
+                document.getElementById('pkt-rahul').textContent = `${meshState.devices.find(d => d.deviceId === 'phone-rahul')?.packetCount || 0} pkts`;
+                document.getElementById('pkt-priya').textContent = `${meshState.devices.find(d => d.deviceId === 'phone-priya')?.packetCount || 0} pkts`;
+                document.getElementById('pkt-aman').textContent = `${meshState.devices.find(d => d.deviceId === 'phone-aman')?.packetCount || 0} pkts`;
+                document.getElementById('pkt-riya').textContent = `${meshState.devices.find(d => d.deviceId === 'phone-riya-bridge')?.packetCount || 0} pkts`;
+
+                // Update visual glowing on active nodes
+                meshState.devices.forEach(d => {
+                    const nodeEl = document.getElementById(`node-${d.deviceId.replace('phone-', '').replace('-bridge', '')}`);
+                    if (nodeEl) {
+                        if (d.packetCount > 0) {
+                            nodeEl.classList.add('active-packet');
+                        } else {
+                            nodeEl.classList.remove('active-packet');
+                        }
+                    }
+                });
+
+            } catch (err) {
+                console.error("Error updating state from backend: ", err);
+            }
+        }
+
+        // Handle Logins
+        function handleLogin() {
+            const vpa = document.getElementById('loginVpa').value.trim();
+            if (!vpa) return alert("Please enter your UPI VPA");
+
+            if (accountsMap[vpa]) {
+                const dbUser = accountsMap[vpa];
+                currentUser = {
+                    vpa: dbUser.vpa,
+                    name: dbUser.holderName,
+                    balance: dbUser.balance,
+                    avatarLetter: dbUser.holderName.charAt(0)
+                };
+
+                // Setup dashboard
+                document.getElementById('homeUserName').textContent = currentUser.name;
+                document.getElementById('userAvatarCircle').textContent = currentUser.avatarLetter;
+                document.getElementById('userAvatarCircle').style.background = '#1E88E5';
+                document.getElementById('homeUserVpa').textContent = currentUser.vpa;
+                document.getElementById('homeBalanceVal').textContent = `₹${parseFloat(currentUser.balance).toFixed(2)}`;
+
+                document.getElementById('receiveName').textContent = currentUser.name;
+                document.getElementById('receiveVpa').textContent = currentUser.vpa;
+
+                document.getElementById('settingsName').textContent = currentUser.name;
+                document.getElementById('settingsVpa').textContent = currentUser.vpa;
+                document.getElementById('settingsAvatar').textContent = currentUser.avatarLetter;
+
+                switchView('viewHome');
+                appendTerminalLog(`User session initiated for: ${currentUser.name} (${currentUser.vpa}). JWT simulation stored.`);
+            } else {
+                alert("Simulated user VPA does not exist. Please register first.");
+            }
+        }
+
+        // Avatar select choice
+        function selectRegAvatar(el, color) {
+            document.querySelectorAll('.avatar-circle').forEach(item => {
+                item.style.borderColor = 'transparent';
+            });
+            el.style.borderColor = '#212121';
+            activeRegAvatar = color;
+        }
+
+        // Register Account
+        async function handleRegister() {
+            const name = document.getElementById('regName').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
+            const phone = document.getElementById('regPhone').value.trim();
+            const vpa = document.getElementById('regVpa').value.trim();
+            const mpin = document.getElementById('regMpin').value.trim();
+
+            if (!name || !vpa || !mpin) {
+                return alert("Name, VPA, and MPIN are required.");
+            }
+
+            const body = {
+                vpa: vpa.includes('@') ? vpa : `${vpa}@demo`,
+                holderName: name,
+                initialBalance: 5000.00
+            };
+
+            try {
+                const response = await fetch('/api/accounts/register', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    appendTerminalLog(`Successfully registered new database user ${name} with VPA ${data.vpa}`);
+                    switchView('viewOtp');
+                } else {
+                    const error = await response.json();
+                    alert(error.error || "VPA Registration failed.");
+                }
+            } catch (err) {
+                alert("Failed to connect to backend for signup: " + err);
+            }
+        }
+
+        function verifyOtp() {
+            const code = document.getElementById('otpCode').value.trim();
+            if (code === "123456") {
+                appendTerminalLog("Mobile OTP verified successfully. Redirecting to Login.");
+                alert("Mobile details verified. You can now login!");
+                switchView('viewLogin');
+            } else {
+                alert("Invalid verification code. Use 123456 for the demo.");
+            }
+        }
+
+        function handleForgotPassword() {
+            const vpa = document.getElementById('forgotVpa').value.trim();
+            if (vpa) {
+                alert(`Simulated OTP password reset link generated for VPA ${vpa}! Code: 123456`);
+                switchView('viewLogin');
+            } else {
+                alert("Please enter your VPA ID.");
+            }
+        }
+
+        // Show contacts list
+        function showSendView() {
+            const listContainer = document.getElementById('contactsListContainer');
+            listContainer.innerHTML = demoContacts.map(c => `
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:12px; background:var(--card-grey); border-radius:var(--radius-md); border:1px solid var(--border-color); cursor:pointer;" onclick="selectRecipient('${c.name}', '${c.vpa}', '${c.color}')">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div class="avatar-circle" style="background:${c.color}; width:38px; height:38px; font-size:14px;">${c.name.charAt(0)}</div>
+                        <div>
+                            <div style="font-weight:700; font-size:13px;">${c.name}</div>
+                            <div style="font-size:11px; color:var(--text-muted);">${c.vpa}</div>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined" style="color:var(--primary)">arrow_forward_ios</span>
+                </div>
+            `).join('');
+            switchView('viewContacts');
+        }
+
+        function selectRecipient(name, vpa, color) {
+            selectedRecipient = { name, vpa, color };
+            document.getElementById('sendUserName').textContent = name;
+            document.getElementById('sendUserVpa').textContent = vpa;
+            document.getElementById('sendUserAvatar').textContent = name.charAt(0);
+            document.getElementById('sendUserAvatar').style.background = color;
+            document.getElementById('sendAmount').value = "500";
+            document.getElementById('sendNote').value = "";
+            switchView('viewSend');
+        }
+
+        function addPresetAmount(val) {
+            const amountInput = document.getElementById('sendAmount');
+            const current = parseFloat(amountInput.value) || 0;
+            amountInput.value = current + val;
+        }
+
+        // MPIN Screen Keypad helpers
+        function showMpinVerification() {
+            const amt = parseFloat(document.getElementById('sendAmount').value) || 0;
+            if (amt <= 0) return alert("Please enter a valid amount.");
+            if (currentUser && parseFloat(currentUser.balance) < amt) {
+                return alert("Insufficient balance in your Demo Bank account.");
+            }
+            pinBuffer = "";
+            updatePinDots();
+            switchView('viewMpin');
+        }
+
+        function pressPinKey(num) {
+            if (pinBuffer.length < 4) {
+                pinBuffer += num;
+                updatePinDots();
+            }
+        }
+
+        function clearPinKey() {
+            pinBuffer = pinBuffer.slice(0, -1);
+            updatePinDots();
+        }
+
+        function updatePinDots() {
+            const dots = document.querySelectorAll('.pin-dot');
+            dots.forEach((dot, idx) => {
+                if (idx < pinBuffer.length) {
+                    dot.style.background = 'var(--primary)';
+                    dot.style.borderColor = 'var(--primary)';
+                } else {
+                    dot.style.background = 'transparent';
+                    dot.style.borderColor = 'var(--border-color)';
+                }
+            });
+        }
+
+        function triggerBiometricSimulation() {
+            document.getElementById('biometricModal').style.display = 'flex';
+            setTimeout(() => {
+                document.getElementById('biometricModal').style.display = 'none';
+                pinBuffer = "1234";
+                submitMpin();
+            }, 1500);
+        }
+
+        function cancelBiometric() {
+            document.getElementById('biometricModal').style.display = 'none';
+        }
+
+        // Initiate payment packet generation
+        async function submitMpin() {
+            if (pinBuffer.length !== 4) return alert("Please enter your 4-digit PIN");
+            
+            // Build payment intent packet via backend API /api/demo/create-packet
+            const amt = parseFloat(document.getElementById('sendAmount').value) || 0;
+            const note = document.getElementById('sendNote').value.trim();
+
+            const body = {
+                senderVpa: currentUser.vpa,
+                receiverVpa: selectedRecipient.vpa,
+                amount: amt,
+                pin: pinBuffer,
+                ttl: 5
+            };
+
+            appendTerminalLog(`Biometric authentication complete. Requesting key-wrap packet generation...`);
+
+            try {
+                // Fetch public key & build instruction via backend
+                const response = await fetch('/api/demo/create-packet', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+
+                if (response.ok) {
+                    generatedPacket = await response.json();
+                    appendTerminalLog(`Encrypted MeshPacket generated successfully. Wire size: ${generatedPacket.ciphertext.length} bytes.`);
+                    
+                    // If offline, save packet locally
+                    if (!networkOnline) {
+                        localQueue.push(generatedPacket);
+                        document.getElementById('homeQueueCount').textContent = `${localQueue.length} Packets`;
+                        appendTerminalLog(`Device in OFFLINE mode. Transaction queued in local storage.`);
+                        
+                        // Inject into sender device mesh in backend simulator
+                        await injectToLocalDevice(generatedPacket);
+
+                        // Trigger visual offline timeline
+                        startOfflineTimeline(generatedPacket);
+                    } else {
+                        // Directly inject & process via timeline
+                        await injectToLocalDevice(generatedPacket);
+                        startOnlineTimeline(generatedPacket);
+                    }
+                } else {
+                    alert("MPIN transaction verification failed.");
+                }
+            } catch (err) {
+                alert("Failed to build crypto packet: " + err);
+            }
+        }
+
+        async function injectToLocalDevice(packet) {
+            const body = {
+                deviceId: "phone-tanish",
+                packet: packet
+            };
+            await fetch('/api/mesh/inject', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            });
+            appendTerminalLog(`Packet injected into phone-tanish mesh node.`);
+        }
+
+        // Timeline visualizer functions
+        function startOnlineTimeline(packet) {
+            document.getElementById('timelinePacketId').textContent = packet.packetId;
+            switchView('viewTimeline');
+            resetTimelineUI();
+
+            setTimeout(() => { setActiveTimelineStep(1, true); }, 200);
+            setTimeout(() => { setActiveTimelineStep(2, true); }, 600);
+            setTimeout(() => { setActiveTimelineStep(3, true); }, 1000);
+            setTimeout(() => { setActiveTimelineStep(4, true); }, 1400);
+            setTimeout(() => { setActiveTimelineStep(5, true); }, 1800);
+            
+            // Connect timeline mesh route: Tanish -> Bridge -> Backend
+            setTimeout(() => { 
+                setActiveTimelineStep(6, true); 
+                appendTerminalLog("Bridge device in-range. Establishing mesh relay tunnel.");
+            }, 2400);
+            
+            setTimeout(() => { 
+                setActiveTimelineStep(7, true);
+                setActiveTimelineStep(8, true);
+                appendTerminalLog("Bridge device has active internet access. Uploading to bank endpoint...");
+            }, 3000);
+
+            setTimeout(async () => {
+                setActiveTimelineStep(9, true);
+                // Call bridge flush to trigger backend processing
+                const response = await fetch('/api/mesh/flush', {method: 'POST'}).then(res => res.json());
+                
+                // Set step active logs
+                highlightCryptoStepper(100);
+
+                setTimeout(() => {
+                    setActiveTimelineStep(10, true);
+                    setupSuccessScreen(response.results[0]);
+                }, 1000);
+            }, 3600);
+        }
+
+        function startOfflineTimeline(packet) {
+            document.getElementById('timelinePacketId').textContent = packet.packetId;
+            switchView('viewTimeline');
+            resetTimelineUI();
+
+            setTimeout(() => { setActiveTimelineStep(1, true); }, 200);
+            setTimeout(() => { setActiveTimelineStep(2, true); }, 600);
+            setTimeout(() => { setActiveTimelineStep(3, true); }, 1000);
+            setTimeout(() => { 
+                setActiveTimelineStep(4, true); 
+                document.getElementById('timeStep5').innerHTML = `<div class="timeline-marker"></div>Broadcasting to mesh... [Offline Stored]`;
+                document.getElementById('timeStep5').classList.add('active');
+            }, 1400);
+
+            // Give a done button to return home while packet stays in queue
+            setTimeout(() => {
+                const actionBtn = document.getElementById('timelineActionBtn');
+                actionBtn.style.display = 'block';
+                actionBtn.textContent = "Return to Dashboard";
+                actionBtn.onclick = () => {
+                    switchView('viewHome');
+                };
+            }, 2000);
+        }
+
+        function resetTimelineUI() {
+            document.querySelectorAll('.timeline-item').forEach(el => {
+                el.className = 'timeline-item';
+            });
+            document.getElementById('timelineActionBtn').style.display = 'none';
+        }
+
+        function setActiveTimelineStep(stepNum, isComplete = false) {
+            const step = document.getElementById(`timeStep${stepNum}`);
+            if (step) {
+                step.classList.add('active');
+                if (isComplete) {
+                    step.classList.add('completed');
+                }
+            }
+        }
+
+        // Highlight right-side cryptographic pipeline step by step
+        function highlightCryptoStepper(duration) {
+            switchConsoleTab('crypto');
+            setTimeout(() => { document.getElementById('cryptoStep1').style.borderColor = '#48BB78'; }, duration);
+            setTimeout(() => { document.getElementById('cryptoStep2').style.borderColor = '#48BB78'; }, duration + 200);
+            setTimeout(() => { document.getElementById('cryptoStep3').style.borderColor = '#48BB78'; }, duration + 400);
+            setTimeout(() => { document.getElementById('cryptoStep4').style.borderColor = '#48BB78'; }, duration + 600);
+            setTimeout(() => { document.getElementById('cryptoStep5').style.borderColor = '#48BB78'; }, duration + 800);
+            setTimeout(() => { document.getElementById('cryptoStep6').style.borderColor = '#48BB78'; }, duration + 1000);
+        }
+
+        function resetCryptoStepper() {
+            for (let i = 1; i <= 6; i++) {
+                document.getElementById(`cryptoStep${i}`).style.borderColor = '#4A5568';
+            }
+        }
+
+        // Setup success payment state card
+        function setupSuccessScreen(result) {
+            const amt = parseFloat(document.getElementById('sendAmount').value) || 0;
+            document.getElementById('successAmountVal').textContent = `₹${amt.toFixed(2)}`;
+            document.getElementById('successRecipName').textContent = selectedRecipient.name;
+            
+            const randomRef = 'TXN' + Math.floor(10000000 + Math.random() * 90000000);
+            document.getElementById('successRefNum').textContent = randomRef;
+            document.getElementById('successHops').textContent = `${result ? result.hops || 1 : 1} hop(s)`;
+
+            // Save details to receipt view fields
+            document.getElementById('recSenderVpa').textContent = currentUser.vpa;
+            document.getElementById('recReceiverVpa').textContent = selectedRecipient.vpa;
+            document.getElementById('recAmount').textContent = `₹${amt.toFixed(2)}`;
+            document.getElementById('recTxnId').textContent = randomRef;
+            document.getElementById('recPacketHash').textContent = (result ? result.packetHash || 'N/A' : 'N/A').substring(0, 16) + '...';
+            document.getElementById('recDateTime').textContent = new Date().toLocaleString();
+
+            // Trigger SMS notifications simulation alerts
+            triggerSimulatedSms(currentUser.name, selectedRecipient.name, amt, randomRef);
+
+            switchView('viewSuccess');
+        }
+
+        // Trigger SMS alerts popup
+        function triggerSimulatedSms(sender, receiver, amt, txnId) {
+            const currentSenderBal = parseFloat(currentUser.balance) - amt;
+            const currentRecBal = (accountsMap[selectedRecipient.vpa] ? parseFloat(accountsMap[selectedRecipient.vpa].balance) : 8000.00) + amt;
+
+            const smsText = `DEMO BANK ALERT: ₹${amt.toFixed(2)} debited. To ${receiver}. Txn ID: ${txnId}. Balance: ₹${currentSenderBal.toFixed(2)}.`;
+            
+            document.getElementById('smsMessageText').textContent = smsText;
+            const notification = document.getElementById('smsNotification');
+            notification.classList.add('show');
+            
+            // Add notification alert logs
+            appendTerminalLog(`Simulated SMS Alert broadcasted: ${smsText}`, true);
+
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 6000);
+        }
+
+        function closeSmsAlert() {
+            document.getElementById('smsNotification').classList.remove('show');
+        }
+
+        // Process Offline Local Queue packets when connection returns online
+        async function processOfflineQueue() {
+            if (localQueue.length === 0) return;
+            appendTerminalLog(`Initiating bulk offline packets flush. Count: ${localQueue.length}`);
+            
+            // Run mesh flush trigger on backend
+            const response = await fetch('/api/mesh/flush', {method: 'POST'}).then(res => res.json());
+            
+            localQueue = [];
+            document.getElementById('homeQueueCount').textContent = "0 Packets";
+            appendTerminalLog("Offline queue cleared. All packets ingested and settled.");
+        }
+
+        // View receipt screen
+        function showReceiptView() {
+            switchView('viewReceipt');
+        }
+
+        // Download receipt to local PDF
+        function downloadPdf() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            doc.setFontSize(20);
+            doc.text("Offline UPI Payment Receipt", 20, 20);
+            doc.setFontSize(10);
+            doc.text("Demo Environment - No real money is transferred", 20, 26);
+            
+            doc.line(20, 30, 190, 30);
+
+            doc.setFontSize(12);
+            doc.text(`Sender VPA: ${document.getElementById('recSenderVpa').textContent}`, 20, 40);
+            doc.text(`Receiver VPA: ${document.getElementById('recReceiverVpa').textContent}`, 20, 50);
+            doc.text(`Amount: ${document.getElementById('recAmount').textContent}`, 20, 60);
+            doc.text(`Transaction ID: ${document.getElementById('recTxnId').textContent}`, 20, 70);
+            doc.text(`Packet Hash: ${document.getElementById('recPacketHash').textContent}`, 20, 80);
+            doc.text(`Date & Time: ${document.getElementById('recDateTime').textContent}`, 20, 90);
+            doc.text(`Settlement Status: SETTLED (Optimistic Lock Confirmed)`, 20, 100);
+
+            doc.line(20, 110, 190, 110);
+            doc.setFontSize(9);
+            doc.text("Thank you for using Mesh Demo Bank simulation system.", 20, 120);
+
+            doc.save("Offline_UPI_Receipt.pdf");
+            appendTerminalLog("Receipt PDF downloaded to client machine.");
+        }
+
+        // Reset all simulation demo data
+        async function resetDemoData() {
+            if (confirm("Reset H2 database tables and clear simulator cache?")) {
+                await fetch('/api/mesh/reset', {method: 'POST'});
+                localQueue = [];
+                document.getElementById('homeQueueCount').textContent = "0 Packets";
+                appendTerminalLog("Simulator database table cache cleared. Reloading page...");
+                location.reload();
+            }
+        }
+
+        function logout() {
+            currentUser = null;
+            switchView('viewLogin');
+        }
+
+        // Presentation Actions Triggers
+        async function triggerMeshGossipRound() {
+            appendTerminalLog("Propagating packet round across nearby node vectors...");
+            const response = await fetch('/api/mesh/gossip', {method: 'POST'}).then(res => res.json());
+            appendTerminalLog(`Gossip round finished. Transfers executed: ${response.transfers}. Grid density updated.`);
+            fetchBackendState();
+        }
+
+        async function triggerMeshBridgeFlush() {
+            appendTerminalLog("Uploading all bridge node cache payloads...");
+            const response = await fetch('/api/mesh/flush', {method: 'POST'}).then(res => res.json());
+            appendTerminalLog(`Flush outcome: ${response.uploadsAttempted} uploads executed.`);
+            fetchBackendState();
+        }
+
+        async function triggerResetMesh() {
+            await fetch('/api/mesh/reset', {method: 'POST'});
+            appendTerminalLog("Mesh devices packet slots cleared.");
+            fetchBackendState();
+        }
+
+        function showMeshView() {
+            switchConsoleTab('mesh');
+            switchView('viewHome');
+        }
+
+        // ==================== PRESENTATION MODE / RUN COMPLETE DEMO ====================
+        function runAutomatedDemo() {
+            if (demoModeRunning) return;
+            demoModeRunning = true;
+            appendTerminalLog("[DEMO SEQUENCE TRIGGERED] Initializing 25-second presentation flow...");
+
+            // Step 1: Login
+            switchView('viewLogin');
+            document.getElementById('loginVpa').value = "tanish@demo";
+            appendTerminalLog("Demo: Automated input credentials for tanish@demo");
+            
+            setTimeout(() => {
+                handleLogin();
+                
+                // Step 2: Open Contacts and Select Rahul
+                setTimeout(() => {
+                    showSendView();
+                    appendTerminalLog("Demo: Navigating to Select Recipient Contacts view");
+                    
+                    setTimeout(() => {
+                        selectRecipient("Rahul Sharma", "rahul@demo", "#E53935");
+                        
+                        // Step 3: Switch to Offline and Pay
+                        setTimeout(() => {
+                            // Turn off internet
+                            document.getElementById('internetToggle').checked = false;
+                            toggleInternet();
+                            // Turn on Bluetooth Mesh
+                            document.getElementById('bluetoothToggle').checked = true;
+                            toggleBluetooth();
+
+                            setTimeout(() => {
+                                showMpinVerification();
+                                appendTerminalLog("Demo: Opening security Pin challenge screen");
+                                
+                                setTimeout(() => {
+                                    triggerBiometricSimulation();
+                                    
+                                    // Step 4: Gossip Rounds Visualizations
+                                    setTimeout(() => {
+                                        switchConsoleTab('mesh');
+                                        appendTerminalLog("Demo: Executing Gossip Round 1 of 2...");
+                                        triggerMeshGossipRound();
+
+                                        setTimeout(() => {
+                                            appendTerminalLog("Demo: Executing Gossip Round 2 of 2. Packet reaches Bridge node.");
+                                            triggerMeshGossipRound();
+
+                                            // Step 5: Bridge Walk Out, Internet Restored
+                                            setTimeout(() => {
+                                                document.getElementById('internetToggle').checked = true;
+                                                toggleInternet();
+                                                
+                                                setTimeout(() => {
+                                                    // Trigger flush and timeline success
+                                                    switchView('viewTimeline');
+                                                    setActiveTimelineStep(6, true);
+                                                    setActiveTimelineStep(7, true);
+                                                    setActiveTimelineStep(8, true);
+                                                    setActiveTimelineStep(9, true);
+
+                                                    setTimeout(async () => {
+                                                        const response = await fetch('/api/mesh/flush', {method: 'POST'}).then(res => res.json());
+                                                        highlightCryptoStepper(100);
+
+                                                        setTimeout(() => {
+                                                            setActiveTimelineStep(10, true);
+                                                            setupSuccessScreen(response.results[0]);
+                                                            demoModeRunning = false;
+                                                            appendTerminalLog("[DEMO SEQUENCE COMPLETED SUCCESSFULLY]");
+                                                        }, 1500);
+                                                    }, 1500);
+                                                }, 1500);
+                                            }, 2000);
+                                        }, 2000);
+                                    }, 2000);
+                                }, 1500);
+                            }, 1500);
+                        }, 1500);
+                    }, 1500);
+                }, 1500);
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
