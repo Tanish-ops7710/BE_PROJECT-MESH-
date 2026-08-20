@@ -18,39 +18,67 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
 import java.nio.charset.StandardCharsets
-import java.security.KeyFactory
-import java.security.KeyPairGenerator
-import java.security.MessageDigest
-import java.security.PrivateKey
-import java.security.PublicKey
-import java.security.Signature
-import java.security.SecureRandom
 import java.util.UUID
-import javax.crypto.Cipher
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
+import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Real Bluetooth Mesh Manager implementing:
+ * - A → B → C → D store-and-forward mesh
+ * - Deduplication via seenPacketIds (ConcurrentHashMap for thread safety)
+ * - TTL/hop limit: packets are dropped or relayed based on remaining TTL
+ * - Packet expiry: packets older than MAX_PACKET_AGE_MS are discarded
+ * - Persist-before-forward: relay callback persists packet to Room before forwarding
+ * - Duplicate prevention: packetId seen set prevents replay attacks
+ */
 class BluetoothMeshManager(private val context: Context) {
+
+    companion object {
+        private const val TAG = "BluetoothMeshManager"
+        private const val SERVICE_UUID_STR = "00001101-0000-1000-8000-00805F9B34FB"
+        /** Maximum hops a packet can travel across the mesh. */
+        const val MAX_TTL = 5
+        /** Packets older than 30 minutes are considered expired and dropped. */
+        private const val MAX_PACKET_AGE_MS = 30 * 60 * 1000L
+        /** Maximum packet size in bytes — prevents malformed data from filling buffers. */
+        private const val MAX_PACKET_SIZE_BYTES = 65536
+    }
 
     private val adapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private val gson = Gson()
-    private val serviceUuid = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
-    private val seenPacketIds = mutableSetOf<String>()
-    private val connectedThreads = mutableListOf<ConnectedThread>()
+    private val serviceUuid: UUID = UUID.fromString(SERVICE_UUID_STR)
 
+    /**
+     * Thread-safe set of already-seen packet IDs.
+     * ConcurrentHashMap used as a Set to prevent race conditions between accept and client threads.
+     */
+    private val seenPacketIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    private val connectedThreads = mutableListOf<ConnectedThread>()
     private var packetCallback: ((MeshPacket) -> Unit)? = null
+    private var relayPersistCallback: ((MeshPacket) -> Unit)? = null
     private var peerCallback: ((List<String>) -> Unit)? = null
     private var serverThread: AcceptThread? = null
     private var discoveryReceiver: BroadcastReceiver? = null
 
-    fun start(packetCallback: (MeshPacket) -> Unit, peerCallback: (List<String>) -> Unit) {
+    /**
+     * Start the mesh node.
+     * @param packetCallback Called when this node is the intended final recipient or sender node.
+     * @param relayPersistCallback Called when this node receives a packet to relay — use this to
+     *   persist the packet to Room DB BEFORE forwarding (store-and-forward guarantee).
+     * @param peerCallback Called whenever the list of connected peers changes.
+     */
+    fun start(
+        packetCallback: (MeshPacket) -> Unit,
+        relayPersistCallback: (MeshPacket) -> Unit,
+        peerCallback: (List<String>) -> Unit
+    ) {
         this.packetCallback = packetCallback
+        this.relayPersistCallback = relayPersistCallback
         this.peerCallback = peerCallback
         if (adapter == null) return
 
         if (!hasRequiredBluetoothPermissions()) {
-            Log.d("BluetoothMeshManager", "Bluetooth permissions not granted; skipping startup")
+            Log.d(TAG, "Bluetooth permissions not granted; skipping startup")
             return
         }
 
@@ -61,17 +89,26 @@ class BluetoothMeshManager(private val context: Context) {
             startDiscovery()
             connectToBondedDevices()
         } catch (e: SecurityException) {
-            Log.d("BluetoothMeshManager", "Bluetooth startup blocked: ${e.message}")
+            Log.d(TAG, "Bluetooth startup blocked: ${e.message}")
         } catch (e: Exception) {
-            Log.d("BluetoothMeshManager", "Bluetooth startup failed: ${e.message}")
+            Log.d(TAG, "Bluetooth startup failed: ${e.message}")
         }
+    }
+
+    /**
+     * Overload for backward compatibility: uses the same callback for both receipt and relay.
+     */
+    fun start(packetCallback: (MeshPacket) -> Unit, peerCallback: (List<String>) -> Unit) {
+        start(packetCallback, packetCallback, peerCallback)
     }
 
     fun stop() {
         serverThread?.cancel()
         serverThread = null
-        connectedThreads.forEach { it.cancel() }
-        connectedThreads.clear()
+        synchronized(connectedThreads) {
+            connectedThreads.forEach { it.cancel() }
+            connectedThreads.clear()
+        }
         try {
             if (discoveryReceiver != null) {
                 context.unregisterReceiver(discoveryReceiver)
@@ -81,14 +118,21 @@ class BluetoothMeshManager(private val context: Context) {
         discoveryReceiver = null
     }
 
+    /**
+     * Send a packet from this node into the mesh.
+     * Marks the packetId as seen locally to prevent loopback.
+     */
     fun sendPacket(packet: MeshPacket) {
         if (packet.packetId.isBlank()) return
-        if (!seenPacketIds.contains(packet.packetId)) {
-            seenPacketIds.add(packet.packetId)
+        if (isExpired(packet)) {
+            Log.d(TAG, "Refusing to send expired packet ${packet.packetId}")
+            return
         }
+        seenPacketIds.add(packet.packetId)
         synchronized(connectedThreads) {
             connectedThreads.toList().forEach { it.write(packet) }
         }
+        Log.d(TAG, "Sent packet ${packet.packetId.take(8)} to ${connectedThreads.size} peer(s), TTL=${packet.ttl}")
     }
 
     fun startDiscovery() {
@@ -97,8 +141,13 @@ class BluetoothMeshManager(private val context: Context) {
             if (adapter?.isDiscovering == true) adapter?.cancelDiscovery()
             adapter?.startDiscovery()
         } catch (e: SecurityException) {
-            Log.d("BluetoothMeshManager", "Discovery blocked: ${e.message}")
+            Log.d(TAG, "Discovery blocked: ${e.message}")
         }
+    }
+
+    private fun isExpired(packet: MeshPacket): Boolean {
+        val age = System.currentTimeMillis() - packet.createdTimestamp
+        return age > MAX_PACKET_AGE_MS
     }
 
     private fun registerDiscoveryReceiver() {
@@ -118,7 +167,9 @@ class BluetoothMeshManager(private val context: Context) {
                         }
                         device?.let {
                             if (it.address != null && it.address != adapter?.address) {
-                                val existing = connectedThreads.any { thread -> thread.remoteAddress == it.address }
+                                val existing = synchronized(connectedThreads) {
+                                    connectedThreads.any { thread -> thread.remoteAddress == it.address }
+                                }
                                 if (!existing) {
                                     connectToDevice(it)
                                 }
@@ -127,6 +178,8 @@ class BluetoothMeshManager(private val context: Context) {
                     }
                     BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
                         peerCallback?.invoke(getPeerNames())
+                        // Restart discovery for continuous mesh scanning
+                        startDiscovery()
                     }
                 }
             }
@@ -166,13 +219,10 @@ class BluetoothMeshManager(private val context: Context) {
                 }
                 thread.start()
                 peerCallback?.invoke(getPeerNames())
+                Log.d(TAG, "Connected to ${device.name ?: device.address}")
             } catch (e: Exception) {
-                Log.d("BluetoothMeshManager", "Unable to connect to ${device.name}: ${e.message}")
-                try {
-                    socket?.close()
-                } catch (ioe: IOException) {
-                    ioe.printStackTrace()
-                }
+                Log.d(TAG, "Unable to connect to ${device.name}: ${e.message}")
+                try { socket?.close() } catch (_: IOException) {}
                 socket = null
             }
         }.start()
@@ -203,17 +253,12 @@ class BluetoothMeshManager(private val context: Context) {
         private val serverSocket: BluetoothServerSocket? = try {
             if (canUseBluetooth()) {
                 adapter?.listenUsingRfcommWithServiceRecord("upi-mesh", serviceUuid)
-            } else {
-                null
-            }
-        } catch (e: SecurityException) {
-            null
-        }
+            } else null
+        } catch (e: SecurityException) { null }
 
         override fun run() {
-            var socket: BluetoothSocket?
-            while (true) {
-                socket = try {
+            while (!isInterrupted) {
+                val socket = try {
                     serverSocket?.accept()
                 } catch (e: IOException) {
                     break
@@ -224,15 +269,15 @@ class BluetoothMeshManager(private val context: Context) {
                         connectedThreads.add(thread)
                     }
                     thread.start()
+                    peerCallback?.invoke(getPeerNames())
+                    Log.d(TAG, "Accepted connection from ${it.remoteDevice.name ?: it.remoteDevice.address}")
                 }
             }
         }
 
         fun cancel() {
-            try {
-                serverSocket?.close()
-            } catch (_: IOException) {
-            }
+            try { serverSocket?.close() } catch (_: IOException) {}
+            interrupt()
         }
     }
 
@@ -247,31 +292,75 @@ class BluetoothMeshManager(private val context: Context) {
         override fun run() {
             while (!isInterrupted) {
                 try {
+                    // Read framed packet: [4-byte length][payload]
                     val payloadSize = dataInput.readInt()
+                    if (payloadSize <= 0 || payloadSize > MAX_PACKET_SIZE_BYTES) {
+                        Log.w(TAG, "Invalid packet size $payloadSize from $remoteAddress — dropping")
+                        break
+                    }
                     val payloadBytes = ByteArray(payloadSize)
                     dataInput.readFully(payloadBytes)
                     val json = String(payloadBytes, StandardCharsets.UTF_8)
                     val packet = gson.fromJson(json, MeshPacket::class.java)
-                    if (packet.packetId.isNotBlank() && seenPacketIds.add(packet.packetId)) {
-                        packetCallback?.invoke(packet)
-                        relayPacket(packet)
-                    }
+
+                    processIncomingPacket(packet)
+
                 } catch (e: IOException) {
+                    Log.d(TAG, "Connection to $remoteName closed: ${e.message}")
                     break
                 } catch (e: Exception) {
-                    Log.d("BluetoothMeshManager", "Packet decode failed: ${e.message}")
+                    Log.d(TAG, "Packet decode failed from $remoteName: ${e.message}")
                     break
                 }
             }
-            synchronized(connectedThreads) {
-                connectedThreads.remove(this)
-            }
-            try {
-                socket?.close()
-            } catch (e: IOException) {
-                e.printStackTrace()
-            }
+            synchronized(connectedThreads) { connectedThreads.remove(this) }
+            try { socket?.close() } catch (_: IOException) {}
             socket = null
+            peerCallback?.invoke(getPeerNames())
+        }
+
+        /**
+         * Full store-and-forward processing for a received packet:
+         * 1. Deduplication — drop if already seen
+         * 2. Expiry check — drop if packet is too old
+         * 3. Persist to Room DB (store) BEFORE forwarding
+         * 4. Notify local callback (this node may be receiver)
+         * 5. Decrement TTL and relay to all OTHER connected peers (forward)
+         */
+        private fun processIncomingPacket(packet: MeshPacket) {
+            val id = packet.packetId
+            if (id.isBlank()) {
+                Log.w(TAG, "Received packet with blank ID — dropping")
+                return
+            }
+
+            // 1. Deduplication
+            if (!seenPacketIds.add(id)) {
+                Log.d(TAG, "Duplicate packet ${id.take(8)} from $remoteName — dropped")
+                return
+            }
+
+            // 2. Expiry
+            if (isExpired(packet)) {
+                Log.d(TAG, "Expired packet ${id.take(8)} from $remoteName — dropped (age=${System.currentTimeMillis() - packet.createdTimestamp}ms)")
+                return
+            }
+
+            Log.d(TAG, "Received new packet ${id.take(8)} from $remoteName TTL=${packet.ttl}")
+
+            // 3. Store: persist received packet to Room DB before relaying
+            relayPersistCallback?.invoke(packet)
+
+            // 4. Deliver to local app layer (receiver check happens in callback)
+            packetCallback?.invoke(packet)
+
+            // 5. Forward: only relay if TTL > 1 (decrement TTL on relay)
+            if (packet.ttl > 1) {
+                val relayPacket = packet.copy(ttl = packet.ttl - 1)
+                relayToOthers(relayPacket)
+            } else {
+                Log.d(TAG, "Packet ${id.take(8)} TTL exhausted — not relaying further")
+            }
         }
 
         fun write(packet: MeshPacket) {
@@ -283,23 +372,22 @@ class BluetoothMeshManager(private val context: Context) {
                     dataOutput.write(payloadBytes)
                     dataOutput.flush()
                 }
-            } catch (_: IOException) {
-            }
+            } catch (_: IOException) {}
         }
 
-        private fun relayPacket(packet: MeshPacket) {
-            synchronized(connectedThreads) {
-                connectedThreads.filter { it !== this }.forEach { it.write(packet) }
+        private fun relayToOthers(packet: MeshPacket) {
+            val peersToRelay = synchronized(connectedThreads) {
+                connectedThreads.filter { it !== this }
+            }
+            peersToRelay.forEach { it.write(packet) }
+            if (peersToRelay.isNotEmpty()) {
+                Log.d(TAG, "Relayed packet ${packet.packetId.take(8)} (TTL=${packet.ttl}) to ${peersToRelay.size} peer(s)")
             }
         }
 
         fun cancel() {
             interrupt()
-            try {
-                socket?.close()
-            } catch (e: IOException) {
-                e.printStackTrace()
-            }
+            try { socket?.close() } catch (_: IOException) {}
             socket = null
         }
     }

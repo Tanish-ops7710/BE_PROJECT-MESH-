@@ -19,6 +19,10 @@ interface AppDao {
     @Query("DELETE FROM offline_packets WHERE packetId = :packetId")
     suspend fun deletePacketById(packetId: String)
 
+    @Query("SELECT * FROM offline_packets WHERE packetId = :packetId LIMIT 1")
+    suspend fun getPacketById(packetId: String): OfflinePacketEntity?
+
+
     // Transactions
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTransaction(tx: LocalTransactionEntity): Long

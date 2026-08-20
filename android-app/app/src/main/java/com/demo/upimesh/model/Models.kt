@@ -38,6 +38,13 @@ object TransactionStatus {
     const val PENDING_UPLOAD = "Pending Upload"
     const val COMPLETED = "Completed"
     const val FAILED = "Failed"
+    // Phase 2 statuses
+    const val QUEUED_OFFLINE = "Queued Offline"
+    const val RELAYING = "Relaying"
+    const val UPLOADED = "Uploaded"
+    const val SETTLED = "Settled"
+    const val EXPIRED = "Expired"
+    const val DUPLICATE = "Duplicate"
 }
 
 data class Transaction(

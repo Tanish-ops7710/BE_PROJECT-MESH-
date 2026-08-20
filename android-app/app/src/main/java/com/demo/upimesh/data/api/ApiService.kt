@@ -86,7 +86,7 @@ interface ApiService {
 }
 
 object NetworkModule {
-    var baseUrl: String = "http://127.0.0.1:9090/"
+    var baseUrl: String = "http://192.168.1.6:9090/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY

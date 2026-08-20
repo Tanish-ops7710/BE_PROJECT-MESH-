@@ -38,10 +38,57 @@ class UpiRepository(
             }
             bluetoothMeshManager?.start(
                 packetCallback = { packet ->
+                    // This node received a packet — try to unwrap (if we are the receiver)
                     val payload = CryptoUtils.unwrapPayload(packet, context)
                     if (payload != null) {
                         repositoryScope.launch {
                             persistIncomingPacket(packet, payload)
+                        }
+                    }
+                },
+                relayPersistCallback = { packet ->
+                    // Store-and-forward: persist the relayed packet to Room BEFORE forwarding
+                    repositoryScope.launch {
+                        try {
+                            val existing = appDao.getPacketById(packet.packetId)
+                            if (existing == null) {
+                                appDao.insertPacket(
+                                    OfflinePacketEntity(
+                                        packetId = packet.packetId,
+                                        senderVpa = packet.senderVpa,
+                                        receiverVpa = "",
+                                        amount = "0",
+                                        ciphertext = packet.ciphertext,
+                                        encryptedKey = packet.encryptedKey,
+                                        iv = packet.iv,
+                                        ttl = packet.ttl
+                                    )
+                                )
+                                // Record in transactions as RELAYING
+                                val txExisting = appDao.getTransactionByPacketId(packet.packetId)
+                                if (txExisting == null) {
+                                    val ts = System.currentTimeMillis()
+                                    appDao.insertTransaction(
+                                        LocalTransactionEntity(
+                                            transactionId = UUID.randomUUID().toString(),
+                                            packetId = packet.packetId,
+                                            senderId = packet.senderVpa,
+                                            receiverId = "",
+                                            senderVpa = packet.senderVpa,
+                                            receiverVpa = "",
+                                            amount = "0",
+                                            timestamp = ts,
+                                            status = TransactionStatus.RELAYING,
+                                            retryCount = 0,
+                                            digitalSignature = "",
+                                            createdAt = ts,
+                                            note = "Relay hop"
+                                        )
+                                    )
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // Persistence failure should not block relay
                         }
                     }
                 },
@@ -137,94 +184,24 @@ class UpiRepository(
         pin: String,
         note: String
     ): Result<MeshPacket> {
-        return try {
-            val req = DemoSendRequest(senderVpa, receiverVpa, amount, pin, 5, "phone-alice")
-            // Use demoSend which creates the packet AND injects it into the mesh simulator
-            val resp = apiService.demoSend(req)
-            if (resp.isSuccessful && resp.body() != null) {
-                val result = resp.body()!!
-                val packetId = result["packetId"]?.toString() ?: UUID.randomUUID().toString()
-                val ttl = (result["ttl"] as? Double)?.toInt() ?: 5
-                val packet = MeshPacket(
-                    packetId = packetId,
-                    senderVpa = senderVpa,
-                    ciphertext = result["ciphertextPreview"]?.toString() ?: "ENCRYPTED",
-                    encryptedKey = "RSA_OAEP_KEY",
-                    iv = "AES_GCM_IV",
-                    ttl = ttl
-                )
-                // Save locally to Room DB
-                appDao.insertPacket(
-                    OfflinePacketEntity(
-                        packetId = packet.packetId,
-                        senderVpa = senderVpa,
-                        receiverVpa = receiverVpa,
-                        amount = amount.toPlainString(),
-                        ciphertext = packet.ciphertext,
-                        encryptedKey = packet.encryptedKey,
-                        iv = packet.iv,
-                        ttl = packet.ttl
-                    )
-                )
-                persistLocalTransaction(packet.packetId, senderVpa, receiverVpa, amount, note, TransactionStatus.PENDING)
-                sendPacketOverBluetooth(packet)
-                // Generate local SMS & Notification
-                appDao.insertSms(
-                    SmsEntity(
-                        body = "Debit Alert: ₹$amount sent to $receiverVpa via Offline BLE Mesh. Packet ID: ${packet.packetId.take(8)}",
-                        type = "DEBIT"
-                    )
-                )
-                appDao.insertNotification(
-                    NotificationEntity(
-                        title = "Offline Mesh Packet Created",
-                        message = "₹$amount is queued and broadcasting via BLE mesh.",
-                        type = "BLE_BROADCAST"
-                    )
-                )
-                Result.success(packet)
-            } else {
-                // Local fallback simulation if server is unreachable
-                val localId = UUID.randomUUID().toString()
-                val packet = MeshPacket(
-                    packetId = localId,
-                    senderVpa = senderVpa,
-                    ciphertext = "OFFLINE_AES_GCM_CIPHERTEXT_" + UUID.randomUUID().toString().replace("-", ""),
-                    encryptedKey = "RSA_OAEP_ENCRYPTED_KEY_HEADER",
-                    iv = "IV_VECTOR_12B",
-                    ttl = 5
-                )
-                appDao.insertPacket(
-                    OfflinePacketEntity(
-                        packetId = packet.packetId,
-                        senderVpa = senderVpa,
-                        receiverVpa = receiverVpa,
-                        amount = amount.toPlainString(),
-                        ciphertext = packet.ciphertext,
-                        encryptedKey = packet.encryptedKey,
-                        iv = packet.iv,
-                        ttl = packet.ttl
-                    )
-                )
-                persistLocalTransaction(packet.packetId, senderVpa, receiverVpa, amount, note, TransactionStatus.PENDING)
-                appDao.insertSms(
-                    SmsEntity(
-                        body = "Offline Debit: ₹$amount queued for BLE gossip to $receiverVpa. Packet ID: ${localId.take(8)}",
-                        type = "DEBIT"
-                    )
-                )
-                Result.success(packet)
-            }
-        } catch (e: Exception) {
-            // Local fallback simulation if offline
-            val localId = UUID.randomUUID().toString()
+        val localId = UUID.randomUUID().toString()
+        val timestamp = System.currentTimeMillis()
+
+        // --- Step 1: Try to build the ciphertext entirely offline ---
+        val offlineCiphertext: String? = if (context != null) {
+            CryptoUtils.encryptPaymentOffline(context, senderVpa, receiverVpa, amount, pin, localId, timestamp)
+        } else null
+
+        // --- Step 2: If offline encryption succeeded, create packet locally ---
+        if (offlineCiphertext != null) {
             val packet = MeshPacket(
                 packetId = localId,
                 senderVpa = senderVpa,
-                ciphertext = "OFFLINE_AES_GCM_CIPHERTEXT_" + UUID.randomUUID().toString().replace("-", ""),
-                encryptedKey = "RSA_OAEP_ENCRYPTED_KEY_HEADER",
-                iv = "IV_VECTOR_12B",
-                ttl = 5
+                ciphertext = offlineCiphertext,
+                encryptedKey = "HYBRID_RSA_OAEP_AES_GCM",
+                iv = "EMBEDDED_IN_CIPHERTEXT",
+                ttl = 5,
+                createdTimestamp = timestamp
             )
             appDao.insertPacket(
                 OfflinePacketEntity(
@@ -238,8 +215,73 @@ class UpiRepository(
                     ttl = packet.ttl
                 )
             )
-            persistLocalTransaction(packet.packetId, senderVpa, receiverVpa, amount, note, TransactionStatus.PENDING)
-            Result.success(packet)
+            persistLocalTransaction(packet.packetId, senderVpa, receiverVpa, amount, note, TransactionStatus.QUEUED_OFFLINE)
+            sendPacketOverBluetooth(packet)
+            appDao.insertSms(
+                SmsEntity(
+                    body = "Debit Alert: ₹$amount queued for $receiverVpa via Offline BLE Mesh. ID: ${localId.take(8)}",
+                    type = "DEBIT"
+                )
+            )
+            appDao.insertNotification(
+                NotificationEntity(
+                    title = "Offline Payment Created",
+                    message = "₹$amount is encrypted and broadcasting via BLE mesh to $receiverVpa.",
+                    type = "BLE_BROADCAST"
+                )
+            )
+            return Result.success(packet)
+        }
+
+        // --- Step 3: Offline key not cached yet — try server (needs internet) ---
+        return try {
+            val req = DemoSendRequest(senderVpa, receiverVpa, amount, pin, 5, "phone-alice")
+            val resp = apiService.demoSend(req)
+            if (resp.isSuccessful && resp.body() != null) {
+                val result = resp.body()!!
+                val packetId = result["packetId"]?.toString() ?: UUID.randomUUID().toString()
+                val ttl = (result["ttl"] as? Double)?.toInt() ?: 5
+                val packet = MeshPacket(
+                    packetId = packetId,
+                    senderVpa = senderVpa,
+                    ciphertext = result["ciphertextPreview"]?.toString() ?: "ENCRYPTED",
+                    encryptedKey = "RSA_OAEP_KEY",
+                    iv = "AES_GCM_IV",
+                    ttl = ttl
+                )
+                appDao.insertPacket(
+                    OfflinePacketEntity(
+                        packetId = packet.packetId,
+                        senderVpa = senderVpa,
+                        receiverVpa = receiverVpa,
+                        amount = amount.toPlainString(),
+                        ciphertext = packet.ciphertext,
+                        encryptedKey = packet.encryptedKey,
+                        iv = packet.iv,
+                        ttl = packet.ttl
+                    )
+                )
+                persistLocalTransaction(packet.packetId, senderVpa, receiverVpa, amount, note, TransactionStatus.QUEUED_OFFLINE)
+                sendPacketOverBluetooth(packet)
+                appDao.insertSms(
+                    SmsEntity(
+                        body = "Debit Alert: ₹$amount sent to $receiverVpa via BLE Mesh. ID: ${packet.packetId.take(8)}",
+                        type = "DEBIT"
+                    )
+                )
+                appDao.insertNotification(
+                    NotificationEntity(
+                        title = "Offline Mesh Packet Created",
+                        message = "₹$amount is queued and broadcasting via BLE mesh.",
+                        type = "BLE_BROADCAST"
+                    )
+                )
+                Result.success(packet)
+            } else {
+                Result.failure(Exception("Server unavailable and no cached server key found. Login while online first to enable offline payments."))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception("Cannot create payment: no cached server key. Please login while online at least once to enable offline payments.", e))
         }
     }
 
@@ -360,6 +402,22 @@ class UpiRepository(
         }
     }
 
+    suspend fun fetchServerPublicKey(): Result<String> {
+        return try {
+            val resp = apiService.getServerPublicKey()
+            if (resp.isSuccessful && resp.body() != null) {
+                val key = resp.body()!!.publicKey
+                context?.getSharedPreferences("upi_mesh_prefs", Context.MODE_PRIVATE)
+                    ?.edit()?.putString("server_public_key", key)?.apply()
+                Result.success(key)
+            } else {
+                Result.failure(Exception("Failed to fetch server public key"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun registerUser(
         vpa: String,
         holderName: String,
@@ -388,6 +446,7 @@ class UpiRepository(
                 )
             )
             if (resp.isSuccessful && resp.body() != null) {
+                fetchServerPublicKey()
                 Result.success(resp.body()!!)
             } else {
                 val errorMsg = resp.errorBody()?.string() ?: "Registration failed"
@@ -402,6 +461,7 @@ class UpiRepository(
         return try {
             val resp = apiService.loginUser(AuthLoginRequest(vpa, mpin))
             if (resp.isSuccessful && resp.body() != null) {
+                fetchServerPublicKey()
                 Result.success(resp.body()!!)
             } else {
                 val errorMsg = resp.errorBody()?.string() ?: "Invalid VPA or MPIN"

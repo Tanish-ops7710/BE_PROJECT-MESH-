@@ -41,6 +41,8 @@ class BluetoothTransferService(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val database = AppDatabase.getDatabase(context)
     private val discovered = mutableListOf<BluetoothDevice>()
+    private val seenPacketIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
 
     private val _discoveredDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
     val discoveredDevices: StateFlow<List<BluetoothDevice>> = _discoveredDevices.asStateFlow()
@@ -376,17 +378,29 @@ class BluetoothTransferService(private val context: Context) {
     }
 
     private fun buildPacket(transaction: LocalTransactionEntity): MeshPacket {
-        val payload = gson.toJson(transaction)
-        return MeshPacket(
-            packetId = transaction.packetId,
-            senderVpa = transaction.senderVpa,
-            ciphertext = payload,
-            encryptedKey = "bt-key",
-            iv = "bt-iv",
-            ttl = 1,
-            signature = transaction.digitalSignature,
-            createdTimestamp = System.currentTimeMillis()
-        )
+        return try {
+            CryptoUtils.wrapPayload(
+                context = context,
+                senderVpa = transaction.senderVpa,
+                receiverVpa = transaction.receiverVpa,
+                amount = transaction.amount,
+                note = transaction.note ?: "",
+                packetId = transaction.packetId,
+                timestamp = transaction.createdAt
+            )
+        } catch (e: Exception) {
+            // Fallback to raw packet if crypto not available
+            MeshPacket(
+                packetId = transaction.packetId,
+                senderVpa = transaction.senderVpa,
+                ciphertext = gson.toJson(transaction),
+                encryptedKey = "bt-key",
+                iv = "bt-iv",
+                ttl = 5,
+                signature = transaction.digitalSignature,
+                createdTimestamp = transaction.createdAt
+            )
+        }
     }
 
     private fun logEvent(message: String) {
@@ -439,6 +453,12 @@ class BluetoothTransferService(private val context: Context) {
 
         private fun handleIncomingPacket(packet: MeshPacket) {
             scope.launch {
+                // Deduplication
+                if (!seenPacketIds.add(packet.packetId)) {
+                    logEvent("Duplicate packet ${packet.packetId.take(8)} — dropped")
+                    sendAck(packet)
+                    return@launch
+                }
                 val existing = database.appDao().getTransactionByPacketId(packet.packetId)
                 if (existing != null) {
                     logEvent("Packet already stored: ${packet.packetId}")
@@ -472,14 +492,13 @@ class BluetoothTransferService(private val context: Context) {
                     transactionId = if (tx.transactionId.isBlank()) UUID.randomUUID().toString() else tx.transactionId,
                     packetId = packet.packetId,
                     status = TransactionStatus.PENDING_UPLOAD,
-                    note = "Received via Bluetooth"
+                    note = tx.note ?: "Received via Bluetooth"
                 )
 
                 database.appDao().insertTransaction(storedTx)
                 database.appDao().insertSms(SmsEntity(body = "Received Bluetooth payment ${packet.packetId.take(8)}", type = "DEBIT"))
                 database.appDao().insertNotification(NotificationEntity(title = "Offline payment received", message = "A new offline payment is waiting to be uploaded", type = "RECEIVED"))
                 logEvent("Transaction stored")
-                logEvent("ACK sent")
                 sendAck(packet)
                 uploadTransactionIfPossible(storedTx)
             }

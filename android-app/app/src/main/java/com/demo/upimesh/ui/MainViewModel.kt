@@ -62,6 +62,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putString("server_base_url", normalized).apply()
         val apiService = NetworkModule.createApiService()
         repository.updateApiService(apiService)
+        viewModelScope.launch {
+            repository.fetchServerPublicKey()
+        }
     }
 
     init {
@@ -98,6 +101,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshMeshState()
         loadSession()
         repository.initBluetoothMesh()
+        viewModelScope.launch {
+            repository.fetchServerPublicKey()
+        }
     }
 
     fun refreshTransactions() {
