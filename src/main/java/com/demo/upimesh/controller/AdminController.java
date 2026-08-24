@@ -37,7 +37,17 @@ public class AdminController {
     @PostMapping("/accounts/create")
     public ResponseEntity<?> createUser(@RequestBody ApiController.AuthRegisterRequest req) {
         try {
-            Account account = authService.register(req.vpa, req.holderName, req.phoneNumber, req.mpin);
+            Account account = authService.register(
+                req.vpa,
+                req.holderName,
+                req.phoneNumber,
+                req.mpin,
+                req.email != null ? req.email : "",
+                req.bankName != null ? req.bankName : "Demo Bank",
+                req.bankAccountNumber != null ? req.bankAccountNumber : "000000000000",
+                req.cardNumber != null ? req.cardNumber : "0000000000000000",
+                req.expiryDate != null ? req.expiryDate : "12/99"
+            );
             return ResponseEntity.ok(account);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

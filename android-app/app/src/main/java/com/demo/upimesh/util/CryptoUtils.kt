@@ -127,4 +127,64 @@ object CryptoUtils {
         val timestamp: Long,
         val packetId: String
     )
+
+    fun encryptPaymentOffline(
+        context: Context,
+        senderVpa: String,
+        receiverVpa: String,
+        amount: java.math.BigDecimal,
+        pin: String,
+        packetId: String,
+        timestamp: Long = System.currentTimeMillis()
+    ): String? {
+        return try {
+            val prefs = context.getSharedPreferences("upi_mesh_prefs", Context.MODE_PRIVATE)
+            val pubKeyBase64 = prefs.getString("server_public_key", null) ?: return null
+
+            // Reconstruct server public key
+            val keyBytes = Base64.decode(pubKeyBase64, Base64.NO_WRAP)
+            val spec = X509EncodedKeySpec(keyBytes)
+            val kf = KeyFactory.getInstance("RSA")
+            val serverPublicKey = kf.generatePublic(spec)
+
+            // Hash the pin using SHA-256
+            val pinMd = MessageDigest.getInstance("SHA-256")
+            val pinHashBytes = pinMd.digest(pin.toByteArray(Charsets.UTF_8))
+            val pinHash = pinHashBytes.joinToString("") { "%02x".format(it) }
+
+            // Construct PaymentInstruction JSON string matching Jackson deserializer on backend
+            val amountStr = amount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
+            val paymentJson = "{\"senderVpa\":\"$senderVpa\",\"receiverVpa\":\"$receiverVpa\",\"amount\":$amountStr,\"pinHash\":\"$pinHash\",\"nonce\":\"$packetId\",\"signedAt\":$timestamp}"
+            val plaintext = paymentJson.toByteArray(Charsets.UTF_8)
+
+            // 1. Generate one-time 256-bit AES key
+            val kg = KeyGenerator.getInstance("AES").apply { init(256) }
+            val aesKey = kg.generateKey()
+
+            // 2. AES-GCM encrypt
+            val iv = ByteArray(12).also { java.security.SecureRandom().nextBytes(it) }
+            val aes = Cipher.getInstance("AES/GCM/NoPadding")
+            aes.init(Cipher.ENCRYPT_MODE, aesKey, GCMParameterSpec(128, iv))
+            val aesCiphertext = aes.doFinal(plaintext)
+
+            // 3. RSA-OAEP encrypt the AES key
+            val rsa = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding")
+            val oaep = javax.crypto.spec.OAEPParameterSpec(
+                "SHA-256", "MGF1", java.security.spec.MGF1ParameterSpec.SHA256, javax.crypto.spec.PSource.PSpecified.DEFAULT
+            )
+            rsa.init(Cipher.ENCRYPT_MODE, serverPublicKey, oaep)
+            val encryptedAesKey = rsa.doFinal(aesKey.encoded)
+
+            // 4. Pack: [encrypted AES key (256 bytes)][IV (12 bytes)][AES ciphertext]
+            val output = ByteArray(encryptedAesKey.size + iv.size + aesCiphertext.size)
+            System.arraycopy(encryptedAesKey, 0, output, 0, encryptedAesKey.size)
+            System.arraycopy(iv, 0, output, encryptedAesKey.size, iv.size)
+            System.arraycopy(aesCiphertext, 0, output, encryptedAesKey.size + iv.size, aesCiphertext.size)
+
+            Base64.encodeToString(output, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
 }

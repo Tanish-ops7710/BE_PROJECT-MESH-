@@ -25,6 +25,21 @@ public class Account {
     @Column(nullable = true)
     private String hashedMpin;
 
+    @Column(nullable = true)
+    private String email;
+
+    @Column(nullable = true)
+    private String bankName;
+
+    @Column(nullable = true)
+    private String bankAccountNumber;
+
+    @Column(nullable = true)
+    private String maskedCardNumber;
+
+    @Column(nullable = true)
+    private String expiryDate;
+
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal dailyLimit = new BigDecimal("10000.00");
 
@@ -82,4 +97,19 @@ public class Account {
 
     public Long getVersion() { return version; }
     public void setVersion(Long version) { this.version = version; }
+
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+
+    public String getBankName() { return bankName; }
+    public void setBankName(String bankName) { this.bankName = bankName; }
+
+    public String getBankAccountNumber() { return bankAccountNumber; }
+    public void setBankAccountNumber(String bankAccountNumber) { this.bankAccountNumber = bankAccountNumber; }
+
+    public String getMaskedCardNumber() { return maskedCardNumber; }
+    public void setMaskedCardNumber(String maskedCardNumber) { this.maskedCardNumber = maskedCardNumber; }
+
+    public String getExpiryDate() { return expiryDate; }
+    public void setExpiryDate(String expiryDate) { this.expiryDate = expiryDate; }
 }

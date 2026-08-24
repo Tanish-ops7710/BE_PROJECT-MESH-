@@ -6,13 +6,14 @@ import java.util.UUID
 
 data class MeshPacket(
     @SerializedName("packetId") val packetId: String,
-    @SerializedName("senderVpa") val senderVpa: String,
+    @SerializedName("senderVpa") val senderVpa: String = "",
     @SerializedName("ciphertext") val ciphertext: String,
-    @SerializedName("encryptedKey") val encryptedKey: String,
-    @SerializedName("iv") val iv: String,
+    @SerializedName("encryptedKey") val encryptedKey: String = "",
+    @SerializedName("iv") val iv: String = "",
     @SerializedName("ttl") var ttl: Int = 5,
     @SerializedName("signature") val signature: String? = null,
-    @SerializedName("createdTimestamp") val createdTimestamp: Long = System.currentTimeMillis()
+    @SerializedName("createdTimestamp") val createdTimestamp: Long = System.currentTimeMillis(),
+    @SerializedName("createdAt") val createdAt: Long = createdTimestamp
 )
 
 data class Account(
@@ -23,7 +24,12 @@ data class Account(
     @SerializedName("pendingBalance") val pendingBalance: BigDecimal? = BigDecimal.ZERO,
     @SerializedName("dailyLimit") val dailyLimit: BigDecimal? = BigDecimal("10000.00"),
     @SerializedName("monthlyLimit") val monthlyLimit: BigDecimal? = BigDecimal("100000.00"),
-    @SerializedName("isFrozen") val isFrozen: Boolean = false
+    @SerializedName("isFrozen") val isFrozen: Boolean = false,
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("bankName") val bankName: String? = null,
+    @SerializedName("bankAccountNumber") val bankAccountNumber: String? = null,
+    @SerializedName("maskedCardNumber") val maskedCardNumber: String? = null,
+    @SerializedName("expiryDate") val expiryDate: String? = null
 )
 
 object TransactionStatus {
@@ -33,6 +39,13 @@ object TransactionStatus {
     const val PENDING_UPLOAD = "Pending Upload"
     const val COMPLETED = "Completed"
     const val FAILED = "Failed"
+    // Phase 2 statuses
+    const val QUEUED_OFFLINE = "Queued Offline"
+    const val RELAYING = "Relaying"
+    const val UPLOADED = "Uploaded"
+    const val SETTLED = "Settled"
+    const val EXPIRED = "Expired"
+    const val DUPLICATE = "Duplicate"
 }
 
 data class Transaction(
@@ -105,7 +118,13 @@ data class AuthRegisterRequest(
     val vpa: String,
     val holderName: String,
     val phoneNumber: String,
-    val mpin: String
+    val mpin: String,
+    val email: String,
+    val bankName: String,
+    val bankAccountNumber: String,
+    val cardNumber: String,
+    val expiryDate: String,
+    val cvv: String
 )
 
 data class AuthLoginRequest(

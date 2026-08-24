@@ -17,21 +17,47 @@ fun NavGraph(navController: NavHostController, viewModel: MainViewModel) {
         composable(Screen.Splash.route) { SplashScreen(navController, viewModel) }
         composable(Screen.Login.route) { LoginScreen(navController, viewModel) }
         composable(Screen.Register.route) { RegisterScreen(navController, viewModel) }
+        composable(Screen.RegistrationSuccess.route) { RegistrationSuccessScreen(navController) }
         composable(Screen.ForgotPassword.route) { ForgotPasswordScreen(navController, viewModel) }
         composable(
-            route = "${Screen.OtpVerification.route}?vpa={vpa}&name={name}&phone={phone}&mpin={mpin}",
+            route = "${Screen.OtpVerification.route}?vpa={vpa}&name={name}&phone={phone}&mpin={mpin}&email={email}&bankName={bankName}&bankAccountNumber={bankAccountNumber}&cardNumber={cardNumber}&expiryDate={expiryDate}&cvv={cvv}",
             arguments = listOf(
                 navArgument("vpa") { defaultValue = "" },
                 navArgument("name") { defaultValue = "" },
                 navArgument("phone") { defaultValue = "" },
-                navArgument("mpin") { defaultValue = "" }
+                navArgument("mpin") { defaultValue = "" },
+                navArgument("email") { defaultValue = "" },
+                navArgument("bankName") { defaultValue = "" },
+                navArgument("bankAccountNumber") { defaultValue = "" },
+                navArgument("cardNumber") { defaultValue = "" },
+                navArgument("expiryDate") { defaultValue = "" },
+                navArgument("cvv") { defaultValue = "" }
             )
         ) { backStackEntry ->
             val vpa = backStackEntry.arguments?.getString("vpa") ?: ""
             val name = backStackEntry.arguments?.getString("name") ?: ""
             val phone = backStackEntry.arguments?.getString("phone") ?: ""
             val mpin = backStackEntry.arguments?.getString("mpin") ?: ""
-            OtpVerificationScreen(navController, viewModel, vpa, name, phone, mpin)
+            val email = backStackEntry.arguments?.getString("email") ?: ""
+            val bankName = backStackEntry.arguments?.getString("bankName") ?: ""
+            val bankAccountNumber = backStackEntry.arguments?.getString("bankAccountNumber") ?: ""
+            val cardNumber = backStackEntry.arguments?.getString("cardNumber") ?: ""
+            val expiryDate = backStackEntry.arguments?.getString("expiryDate") ?: ""
+            val cvv = backStackEntry.arguments?.getString("cvv") ?: ""
+            OtpVerificationScreen(
+                navController = navController,
+                viewModel = viewModel,
+                vpa = vpa,
+                name = name,
+                phone = phone,
+                mpin = mpin,
+                email = email,
+                bankName = bankName,
+                bankAccountNumber = bankAccountNumber,
+                cardNumber = cardNumber,
+                expiryDate = expiryDate,
+                cvv = cvv
+            )
         }
         composable(Screen.Home.route) { HomeScreen(navController, viewModel) }
         composable(Screen.Contacts.route) { ContactsScreen(navController) }
