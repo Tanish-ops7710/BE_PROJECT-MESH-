@@ -13,6 +13,9 @@ interface AppDao {
     @Query("SELECT * FROM offline_packets ORDER BY timestamp DESC")
     fun getAllPackets(): Flow<List<OfflinePacketEntity>>
 
+    @Query("SELECT * FROM offline_packets ORDER BY timestamp DESC")
+    suspend fun getAllPacketsList(): List<OfflinePacketEntity>
+
     @Delete
     suspend fun deletePacket(packet: OfflinePacketEntity)
 
@@ -50,6 +53,9 @@ interface AppDao {
 
     @Query("UPDATE local_transactions SET retryCount = retryCount + 1 WHERE transactionId = :transactionId")
     suspend fun incrementTransactionRetryCount(transactionId: String)
+
+    @Query("UPDATE local_transactions SET amount = :amount, senderVpa = :senderVpa, receiverVpa = :receiverVpa, status = :status WHERE transactionId = :transactionId")
+    suspend fun updateTransactionDetails(transactionId: String, amount: String, senderVpa: String, receiverVpa: String, status: String)
 
     // SMS Inbox
     @Insert(onConflict = OnConflictStrategy.REPLACE)

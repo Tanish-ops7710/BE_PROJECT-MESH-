@@ -87,6 +87,8 @@ class UpiRepository(
                                     )
                                 }
                             }
+                            // Auto-upload if this device has internet access
+                            uploadPendingPackets()
                         } catch (e: Exception) {
                             // Persistence failure should not block relay
                         }
@@ -230,6 +232,9 @@ class UpiRepository(
                     type = "BLE_BROADCAST"
                 )
             )
+            repositoryScope.launch {
+                uploadPendingPackets()
+            }
             return Result.success(packet)
         }
 
@@ -311,8 +316,114 @@ class UpiRepository(
         }
     }
 
+    suspend fun uploadPendingPackets(): Result<Int> {
+        return try {
+            val pendingPackets = appDao.getAllPacketsList()
+            var settledCount = 0
+            for (pkt in pendingPackets) {
+                try {
+                    val meshPacket = MeshPacket(
+                        packetId = pkt.packetId,
+                        senderVpa = pkt.senderVpa,
+                        ciphertext = pkt.ciphertext,
+                        encryptedKey = pkt.encryptedKey,
+                        iv = pkt.iv,
+                        ttl = pkt.ttl,
+                        createdTimestamp = pkt.timestamp,
+                        createdAt = pkt.timestamp
+                    )
+                    val resp = apiService.ingestPacket(
+                        packet = meshPacket,
+                        bridgeNodeId = "android-device-bridge",
+                        hopCount = kotlin.math.max(1, 5 - pkt.ttl)
+                    )
+                    if (resp.isSuccessful && resp.body() != null) {
+                        val body = resp.body()!!
+                        if (body.outcome == "SETTLED" || body.outcome == "DUPLICATE_DROPPED") {
+                            appDao.updateTransactionStatus(pkt.packetId, TransactionStatus.SETTLED)
+                            appDao.deletePacketById(pkt.packetId)
+                            appDao.insertSms(
+                                SmsEntity(
+                                    body = "Payment Settled: ₹${pkt.amount} for ${pkt.receiverVpa}. Settled by Bank Server.",
+                                    type = "SETTLEMENT"
+                                )
+                            )
+                            appDao.insertNotification(
+                                NotificationEntity(
+                                    title = "Payment Settled",
+                                    message = "₹${pkt.amount} transaction (ID: ${pkt.packetId.take(8)}) settled by Bank Server.",
+                                    type = "SETTLEMENT"
+                                )
+                            )
+                            settledCount++
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Keep in queue for retry if network is unavailable
+                }
+            }
+            syncTransactionsWithServer()
+            Result.success(settledCount)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun syncTransactionsWithServer() {
+        try {
+            val resp = apiService.getTransactions()
+            if (resp.isSuccessful && resp.body() != null) {
+                val serverTxs = resp.body()!!
+                val localTxs = appDao.getAllTransactionsList()
+                
+                // 1. Update existing local transactions
+                for (localTx in localTxs) {
+                    val matched = serverTxs.find { sTx ->
+                        (sTx.packetId != null && sTx.packetId == localTx.packetId) ||
+                        (sTx.senderVpa == localTx.senderVpa && sTx.receiverVpa == localTx.receiverVpa && sTx.amount.toPlainString() == localTx.amount)
+                    }
+                    if (matched != null && (matched.status.equals("SETTLED", ignoreCase = true) || matched.status.equals("COMPLETED", ignoreCase = true))) {
+                        if (localTx.status != TransactionStatus.SETTLED || localTx.amount == "settled" || localTx.receiverVpa.isBlank()) {
+                            appDao.updateTransactionDetails(
+                                transactionId = localTx.transactionId,
+                                amount = matched.amount.toPlainString(),
+                                senderVpa = matched.senderVpa ?: localTx.senderVpa,
+                                receiverVpa = matched.receiverVpa ?: localTx.receiverVpa,
+                                status = TransactionStatus.SETTLED
+                            )
+                            appDao.deletePacketById(localTx.packetId)
+                        }
+                    }
+                }
+                
+                // 2. Insert missing transactions from server
+                val localPacketIds = localTxs.mapNotNull { it.packetId }.toSet()
+                for (sTx in serverTxs) {
+                    if (sTx.packetId != null && !localPacketIds.contains(sTx.packetId)) {
+                        val newTx = LocalTransactionEntity(
+                            transactionId = sTx.transactionId,
+                            packetId = sTx.packetId ?: UUID.randomUUID().toString(),
+                            senderId = sTx.senderId,
+                            receiverId = sTx.receiverId,
+                            senderVpa = sTx.senderVpa ?: "",
+                            receiverVpa = sTx.receiverVpa ?: "",
+                            amount = sTx.amount.toPlainString(),
+                            timestamp = sTx.timestamp,
+                            status = if (sTx.status.equals("SETTLED", ignoreCase = true)) TransactionStatus.SETTLED else sTx.status,
+                            digitalSignature = sTx.digitalSignature ?: "",
+                            createdAt = sTx.createdAt,
+                            note = "Synced from server"
+                        )
+                        appDao.insertTransaction(newTx)
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
     suspend fun flushBridgeUploads(): Result<FlushResultResponse> {
         return try {
+            uploadPendingPackets()
             val resp = apiService.flush()
             if (resp.isSuccessful && resp.body() != null) {
                 val flushRes = resp.body()!!
@@ -331,7 +442,7 @@ class UpiRepository(
                     )
                 )
                 appDao.getTransactionsByStatus(TransactionStatus.PENDING).first().forEach { tx ->
-                    appDao.updateTransactionStatusById(tx.transactionId, TransactionStatus.COMPLETED)
+                    appDao.updateTransactionStatusById(tx.transactionId, TransactionStatus.SETTLED)
                 }
                 Result.success(flushRes)
             } else {
@@ -350,6 +461,7 @@ class UpiRepository(
 
     suspend fun fetchTransactions(): Result<List<Transaction>> {
         return try {
+            syncTransactionsWithServer()
             val resp = apiService.getTransactions()
             if (resp.isSuccessful && resp.body() != null) {
                 Result.success(resp.body()!!)

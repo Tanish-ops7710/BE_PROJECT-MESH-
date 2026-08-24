@@ -6,13 +6,14 @@ import java.util.UUID
 
 data class MeshPacket(
     @SerializedName("packetId") val packetId: String,
-    @SerializedName("senderVpa") val senderVpa: String,
+    @SerializedName("senderVpa") val senderVpa: String = "",
     @SerializedName("ciphertext") val ciphertext: String,
-    @SerializedName("encryptedKey") val encryptedKey: String,
-    @SerializedName("iv") val iv: String,
+    @SerializedName("encryptedKey") val encryptedKey: String = "",
+    @SerializedName("iv") val iv: String = "",
     @SerializedName("ttl") var ttl: Int = 5,
     @SerializedName("signature") val signature: String? = null,
-    @SerializedName("createdTimestamp") val createdTimestamp: Long = System.currentTimeMillis()
+    @SerializedName("createdTimestamp") val createdTimestamp: Long = System.currentTimeMillis(),
+    @SerializedName("createdAt") val createdAt: Long = createdTimestamp
 )
 
 data class Account(

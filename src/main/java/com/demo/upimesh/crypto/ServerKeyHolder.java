@@ -30,9 +30,23 @@ public class ServerKeyHolder {
 
     @PostConstruct
     public void init() throws Exception {
+        java.io.File keyFile = new java.io.File("server_keypair.dat");
+        if (keyFile.exists()) {
+            try (java.io.ObjectInputStream ois = new java.io.ObjectInputStream(new java.io.FileInputStream(keyFile))) {
+                this.keyPair = (KeyPair) ois.readObject();
+                log.info("Server RSA keypair loaded from file. Public key fingerprint: {}",
+                        getPublicKeyBase64().substring(0, 32) + "...");
+                return;
+            } catch (Exception e) {
+                log.warn("Failed to load keypair, generating new one...");
+            }
+        }
         KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
         gen.initialize(2048);
         this.keyPair = gen.generateKeyPair();
+        try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(new java.io.FileOutputStream(keyFile))) {
+            oos.writeObject(this.keyPair);
+        }
         log.info("Server RSA keypair generated (2048-bit). Public key fingerprint: {}",
                 getPublicKeyBase64().substring(0, 32) + "...");
     }

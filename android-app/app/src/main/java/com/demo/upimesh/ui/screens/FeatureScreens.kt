@@ -28,6 +28,7 @@ import com.demo.upimesh.ui.navigation.Screen
 import com.demo.upimesh.ui.theme.UpiDarkBlue
 import com.demo.upimesh.ui.theme.UpiPrimaryBlue
 import com.demo.upimesh.ui.theme.UpiSuccessGreen
+import com.demo.upimesh.model.TransactionStatus
 import java.math.BigDecimal
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -669,6 +670,10 @@ fun DeveloperModeScreen(navController: NavController, viewModel: MainViewModel) 
 fun TransactionHistoryScreen(navController: NavController, viewModel: MainViewModel) {
     val transactions by viewModel.localTransactions.collectAsState(initial = emptyList())
 
+    LaunchedEffect(Unit) {
+        viewModel.refreshTransactions()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -677,28 +682,95 @@ fun TransactionHistoryScreen(navController: NavController, viewModel: MainViewMo
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
+                },
+                actions = {
+                    IconButton(onClick = { viewModel.uploadPendingPackets() }) {
+                        Icon(Icons.Default.Sync, contentDescription = "Sync with Server")
+                    }
                 }
             )
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFFF8F9FA))
-                .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(transactions) { tx ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("To: ${tx.receiverVpa}", fontWeight = FontWeight.Bold)
-                        Text("Amount: ₹${tx.amount}", color = UpiPrimaryBlue, fontWeight = FontWeight.Bold)
-                        Text("Status: ${tx.status}", fontSize = 12.sp, color = UpiSuccessGreen)
+        if (transactions.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFF8F9FA))
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("No transactions yet.", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFF8F9FA))
+                    .padding(padding)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(transactions) { tx ->
+                    val statusColor = when (tx.status) {
+                        TransactionStatus.SETTLED, TransactionStatus.COMPLETED -> UpiSuccessGreen
+                        TransactionStatus.QUEUED_OFFLINE -> Color(0xFFE65100)
+                        TransactionStatus.RELAYING -> Color(0xFF0288D1)
+                        TransactionStatus.PENDING_UPLOAD, TransactionStatus.PENDING -> Color(0xFFF57C00)
+                        TransactionStatus.FAILED -> Color.Red
+                        else -> Color.Gray
+                    }
+                    val statusBg = statusColor.copy(alpha = 0.12f)
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (tx.senderVpa.isNotBlank() && tx.receiverVpa.isNotBlank()) {
+                                        "${tx.senderVpa} → ${tx.receiverVpa}"
+                                    } else if (tx.receiverVpa.isNotBlank()) {
+                                        "To: ${tx.receiverVpa}"
+                                    } else {
+                                        "Packet: ${tx.packetId.take(8)}"
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = statusBg
+                                ) {
+                                    Text(
+                                        text = tx.status,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = statusColor,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("₹${tx.amount}", color = UpiPrimaryBlue, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                if (tx.note.isNotBlank()) {
+                                    Text(tx.note, fontSize = 12.sp, color = Color.Gray)
+                                }
+                            }
+                            if (tx.packetId.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("ID: ${tx.packetId.take(16)}...", fontSize = 10.sp, color = Color.LightGray)
+                            }
+                        }
                     }
                 }
             }

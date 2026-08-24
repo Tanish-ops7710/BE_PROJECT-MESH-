@@ -15,6 +15,7 @@ import com.demo.upimesh.model.Account
 import com.demo.upimesh.model.MeshPacket
 import com.demo.upimesh.model.MeshStateResponse
 import com.demo.upimesh.model.TransactionStatus
+import com.demo.upimesh.util.BluetoothTransferService
 import com.demo.upimesh.util.NotificationUtils
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +32,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: UpiRepository
     private val prefs = application.getSharedPreferences("upi_mesh_prefs", Context.MODE_PRIVATE)
+
+    /** Single shared instance — all screens must use viewModel.bluetoothTransferService */
+    val bluetoothTransferService: BluetoothTransferService = BluetoothTransferService(application)
 
     val offlinePackets: StateFlow<List<OfflinePacketEntity>>
     private val _localTransactions = MutableStateFlow<List<LocalTransactionEntity>>(emptyList())
@@ -67,8 +71,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun refreshServerKey() {
+        viewModelScope.launch {
+            repository.fetchServerPublicKey()
+        }
+    }
+
     init {
         val database = AppDatabase.getDatabase(application)
+        
+        val savedUrl = prefs.getString("server_base_url", null)
+        if (!savedUrl.isNullOrBlank()) {
+            NetworkModule.baseUrl = if (savedUrl.endsWith("/")) savedUrl else "$savedUrl/"
+        }
+
         val apiService = NetworkModule.createApiService()
         repository = UpiRepository(apiService, database.appDao(), application)
 
@@ -93,21 +109,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = emptyList()
         )
 
-        val savedUrl = prefs.getString("server_base_url", null)
-        if (!savedUrl.isNullOrBlank()) {
-            NetworkModule.baseUrl = if (savedUrl.endsWith("/")) savedUrl else "$savedUrl/"
-        }
-
         refreshMeshState()
         loadSession()
-        repository.initBluetoothMesh()
+        initBluetoothMesh()
         viewModelScope.launch {
             repository.fetchServerPublicKey()
+            repository.uploadPendingPackets()
+        }
+
+        // Auto-refresh transaction list and balance when BT service signals DB change
+        viewModelScope.launch {
+            bluetoothTransferService.needsRefresh.collect {
+                refreshTransactions()
+                refreshAccountFromServer()
+            }
+        }
+    }
+
+    fun initBluetoothMesh() {
+        repository.initBluetoothMesh()
+    }
+
+    fun stopBluetoothMesh() {
+        repository.stopBluetoothMesh()
+    }
+
+    fun uploadPendingPackets(onComplete: ((Int) -> Unit)? = null) {
+        viewModelScope.launch {
+            val res = repository.uploadPendingPackets()
+            refreshAccountFromServer()
+            refreshTransactions()
+            onComplete?.invoke(res.getOrDefault(0))
         }
     }
 
     fun refreshTransactions() {
         viewModelScope.launch {
+            repository.syncTransactionsWithServer()
             _localTransactions.value = repository.allTransactions.first()
         }
     }
@@ -158,8 +196,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 NotificationUtils.sendNotification(
                     getApplication(),
-                    "UPI Packet Broadcasted",
-                    "Sent ₹$amount to $receiverVpa via BLE Mesh."
+                    "Payment Initiated",
+                    "₹$amount pending to $receiverVpa via BLE Mesh."
                 )
                 onSuccess(packet)
             } else {
@@ -177,16 +215,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun triggerFlushBridge() {
         viewModelScope.launch {
+            repository.uploadPendingPackets()
             repository.flushBridgeUploads()
             refreshMeshState()
-            // Mark all local offline transactions as SETTLED and clear local packets queue
-            val dao = AppDatabase.getDatabase(getApplication<Application>()).appDao()
-            val packets = offlinePackets.value
-            packets.forEach { pkt ->
-                dao.updateTransactionStatus(pkt.packetId, TransactionStatus.COMPLETED)
-                dao.deletePacketById(pkt.packetId)
-            }
-            // Refresh balance from server after settlement
+            refreshTransactions()
             refreshAccountFromServer()
         }
     }
@@ -278,11 +310,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 
                 _currentAccount.value = loginResponse.account
                 _currentAccountBalance.value = serverBal
-                prefs.edit().putString("user_balance_$vpa", serverBal.toPlainString()).apply()
+                prefs.edit()
+                    .putString("user_balance_$vpa", serverBal.toPlainString())
+                    .putString("offline_mpin_$vpa", mpin)
+                    .putString("offline_name_$vpa", loginResponse.account.holderName)
+                    .apply()
+                    
                 saveSession(loginResponse.token, loginResponse.vpa, loginResponse.account.holderName, serverBal)
                 onResult(true, "Login successful")
             } else {
-                onResult(false, res.exceptionOrNull()?.message ?: "Login failed")
+                // Offline fallback
+                val storedMpin = prefs.getString("offline_mpin_$vpa", null)
+                if (storedMpin != null && storedMpin == mpin) {
+                    val name = prefs.getString("offline_name_$vpa", "User") ?: "User"
+                    val balStr = prefs.getString("user_balance_$vpa", "0") ?: "0"
+                    val token = prefs.getString("session_token", "offline-token") ?: "offline-token"
+                    
+                    val dummyAccount = com.demo.upimesh.model.Account(
+                        vpa = vpa,
+                        holderName = name,
+                        balance = java.math.BigDecimal(balStr)
+                    )
+                    _currentAccount.value = dummyAccount
+                    _currentAccountBalance.value = java.math.BigDecimal(balStr)
+                    saveSession(token, vpa, name, java.math.BigDecimal(balStr))
+                    onResult(true, "Offline login successful")
+                } else {
+                    onResult(false, res.exceptionOrNull()?.message ?: "Login failed")
+                }
             }
         }
     }
@@ -294,7 +349,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 repository.logoutUser(token)
             }
         }
-        prefs.edit().clear().apply()
+        prefs.edit()
+            .remove("session_token")
+            .remove("session_vpa")
+            .remove("session_name")
+            .apply()
         _currentAccount.value = null
         onResult(true)
     }

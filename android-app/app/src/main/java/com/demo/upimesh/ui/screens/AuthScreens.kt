@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.demo.upimesh.data.api.NetworkModule
 import com.demo.upimesh.ui.MainViewModel
 import com.demo.upimesh.ui.navigation.Screen
 import com.demo.upimesh.ui.theme.UpiDarkBlue
@@ -191,7 +192,7 @@ fun LoginScreen(navController: NavController, viewModel: MainViewModel) {
                 TextButton(onClick = { navController.navigate(Screen.DeveloperMode.route) }) {
                     Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Change Server IP", fontSize = 12.sp, color = Color.Gray)
+                    Text("Change Server IP (Current: ${NetworkModule.baseUrl})", fontSize = 12.sp, color = Color.Gray)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))

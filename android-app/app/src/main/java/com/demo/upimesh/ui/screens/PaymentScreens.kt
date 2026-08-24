@@ -25,14 +25,13 @@ import com.demo.upimesh.ui.navigation.Screen
 import com.demo.upimesh.ui.theme.UpiPrimaryBlue
 import com.demo.upimesh.ui.theme.UpiSuccessGreen
 import com.demo.upimesh.util.BiometricAuthManager
-import com.demo.upimesh.util.BluetoothTransferService
 import androidx.fragment.app.FragmentActivity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SendMoneyScreen(navController: NavController, viewModel: MainViewModel) {
     val context = LocalContext.current
-    val transferService = remember(context) { BluetoothTransferService(context) }
+    val transferService = viewModel.bluetoothTransferService
     val pendingTransactions by viewModel.localTransactions.collectAsState(initial = emptyList())
     val hasPendingBluetoothTx = pendingTransactions.any { it.status == "Pending Bluetooth" }
     var receiverVpa by remember { mutableStateOf("rahul@demo") }
