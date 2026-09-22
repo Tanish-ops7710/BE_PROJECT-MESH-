@@ -270,6 +270,12 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel) {
                 }
             } else {
                 items(transactions.take(5)) { tx ->
+                    val isSent = tx.senderVpa == vpa
+                    val iconVector = if (isSent) Icons.AutoMirrored.Filled.Send else Icons.AutoMirrored.Filled.CallReceived
+                    val amountPrefix = if (isSent) "-" else "+"
+                    val amountColor = if (isSent) Color(0xFFD93025) else UpiSuccessGreen
+                    val targetName = if (isSent) "To: ${tx.receiverVpa}" else "From: ${tx.senderVpa}"
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -295,7 +301,7 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel) {
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.Send,
+                                            imageVector = iconVector,
                                             contentDescription = null,
                                             tint = UpiPrimaryBlue
                                         )
@@ -303,14 +309,14 @@ fun HomeScreen(navController: NavController, viewModel: MainViewModel) {
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Text(tx.receiverVpa, fontWeight = FontWeight.Bold)
+                                    Text(targetName, fontWeight = FontWeight.Bold)
                                     Text(tx.status, fontSize = 12.sp, color = UpiSuccessGreen)
                                 }
                             }
                             Text(
-                                text = "- ₹${tx.amount}",
+                                text = "$amountPrefix ₹${tx.amount}",
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFD93025)
+                                color = amountColor
                             )
                         }
                     }

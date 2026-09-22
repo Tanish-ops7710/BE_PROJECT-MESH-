@@ -669,6 +669,7 @@ fun DeveloperModeScreen(navController: NavController, viewModel: MainViewModel) 
 @Composable
 fun TransactionHistoryScreen(navController: NavController, viewModel: MainViewModel) {
     val transactions by viewModel.localTransactions.collectAsState(initial = emptyList())
+    val currentVpa = viewModel.currentAccount.collectAsState().value?.vpa ?: ""
 
     LaunchedEffect(Unit) {
         viewModel.refreshTransactions()
@@ -711,6 +712,10 @@ fun TransactionHistoryScreen(navController: NavController, viewModel: MainViewMo
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(transactions) { tx ->
+                    val isSent = tx.senderVpa == currentVpa
+                    val amountPrefix = if (isSent) "-" else "+"
+                    val amountColor = if (isSent) Color(0xFFD93025) else UpiSuccessGreen
+
                     val statusColor = when (tx.status) {
                         TransactionStatus.SETTLED, TransactionStatus.COMPLETED -> UpiSuccessGreen
                         TransactionStatus.QUEUED_OFFLINE -> Color(0xFFE65100)
@@ -734,7 +739,7 @@ fun TransactionHistoryScreen(navController: NavController, viewModel: MainViewMo
                             ) {
                                 Text(
                                     text = if (tx.senderVpa.isNotBlank() && tx.receiverVpa.isNotBlank()) {
-                                        "${tx.senderVpa} → ${tx.receiverVpa}"
+                                        if (isSent) "To: ${tx.receiverVpa}" else "From: ${tx.senderVpa}"
                                     } else if (tx.receiverVpa.isNotBlank()) {
                                         "To: ${tx.receiverVpa}"
                                     } else {
@@ -761,7 +766,7 @@ fun TransactionHistoryScreen(navController: NavController, viewModel: MainViewMo
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("₹${tx.amount}", color = UpiPrimaryBlue, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                Text("$amountPrefix ₹${tx.amount}", color = amountColor, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                                 if (tx.note.isNotBlank()) {
                                     Text(tx.note, fontSize = 12.sp, color = Color.Gray)
                                 }
