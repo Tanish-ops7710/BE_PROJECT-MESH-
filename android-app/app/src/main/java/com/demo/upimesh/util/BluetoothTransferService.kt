@@ -66,6 +66,11 @@ class BluetoothTransferService(private val context: Context) {
     private val _needsRefresh = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 4)
     val needsRefresh: kotlinx.coroutines.flow.SharedFlow<Unit> = _needsRefresh
 
+    // Emitted when Phone B finishes uploading a received packet — triggers a server sync
+    // so the real settled transaction (with correct amount/VPA) appears in history.
+    private val _needsSync = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+    val needsSync: kotlinx.coroutines.flow.SharedFlow<Unit> = _needsSync
+
     private var serverThread: AcceptThread? = null
     private var connectedSocket: BluetoothSocket? = null
     private var receiverThread: ConnectedThread? = null
@@ -230,6 +235,13 @@ class BluetoothTransferService(private val context: Context) {
 
                 socket = device.createRfcommSocketToServiceRecord(serviceUuid)
                 adapter?.cancelDiscovery()
+                
+                // Close any existing socket before opening a new one
+                try {
+                    connectedSocket?.close()
+                } catch (_: IOException) {}
+                receiverThread?.interrupt()
+                
                 socket?.connect()
                 connectedSocket = socket
                 
@@ -277,7 +289,7 @@ class BluetoothTransferService(private val context: Context) {
             // Use the already-connected socket/thread — do NOT call ensureConnectedSocket()
             // which would overwrite the live ConnectedThread and break the connection.
             val activeThread = receiverThread
-            if (activeThread == null || !connectedSocket?.isConnected.let { it == true }) {
+            if (activeThread == null || !connectedSocket?.isConnected.let { it == true } || !_isConnected.value) {
                 database.appDao().updateTransactionStatusById(transaction.transactionId, TransactionStatus.PENDING_BLUETOOTH)
                 logEvent("No active BT connection — packet queued")
                 _status.value = "Not Connected"
@@ -341,7 +353,7 @@ class BluetoothTransferService(private val context: Context) {
             // Use the already-connected socket/thread — do NOT call ensureConnectedSocket()
             // which would overwrite the live ConnectedThread and break the connection.
             val activeThread = receiverThread
-            if (activeThread == null || !connectedSocket?.isConnected.let { it == true }) {
+            if (activeThread == null || !connectedSocket?.isConnected.let { it == true } || !_isConnected.value) {
                 database.appDao().updateTransactionStatusById(transaction.transactionId, TransactionStatus.PENDING_BLUETOOTH)
                 logEvent("No active BT connection — packet queued")
                 _status.value = "Not Connected"
@@ -451,6 +463,12 @@ class BluetoothTransferService(private val context: Context) {
                     break
                 }
                 if (socket != null) {
+                    if (connectedSocket != null && connectedSocket?.isConnected == true) {
+                        Log.d(TAG, "Already connected to another device, rejecting incoming socket")
+                        try { socket.close() } catch (_: IOException) {}
+                        continue
+                    }
+
                     connectedSocket = socket
                     val remoteDevice = socket.remoteDevice
                     val deviceName = try {
@@ -458,22 +476,15 @@ class BluetoothTransferService(private val context: Context) {
                     } catch (_: SecurityException) {
                         remoteDevice.address
                     }
-                    _selectedDevice.value = remoteDevice
-                    _isConnected.value = true
+                    
+                    // Do NOT set _isConnected to true here. 
+                    // It will be set to true when the user clicks 'Accept' in the UI.
+                    
                     Log.d(TAG, "CONNECTION_ACCEPTED: Incoming RFCOMM connection accepted from $deviceName (${remoteDevice.address})")
                     logEvent("Incoming RFCOMM connection accepted from $deviceName")
 
-                    // Critical: Close the server socket IMMEDIATELY after accepting one client.
-                    // Keeping it open causes Android to hand new incoming connections to a new
-                    // socket, which can force-close the one we just accepted (the -1 read error).
-                    try { serverSocket?.close() } catch (_: IOException) {}
-                    serverSocket = null
-
                     receiverThread = ConnectedThread(socket, isServer = true)
                     receiverThread?.start()
-
-                    // Break out — this is a point-to-point protocol, only one connection per session.
-                    break
                 }
             }
         }
@@ -901,10 +912,16 @@ class BluetoothTransferService(private val context: Context) {
                     }
                     val response = apiService.ingestPacket(meshPacket)
                     if (response.isSuccessful && (response.body()?.outcome == "SETTLED" || response.body()?.outcome == "DUPLICATE_DROPPED")) {
+                        val serverPacketHash = response.body()?.packetHash
+                        if (serverPacketHash != null) {
+                            database.appDao().updateTransactionPacketId(transaction.transactionId, serverPacketHash)
+                        }
                         database.appDao().updateTransactionStatusById(transaction.transactionId, TransactionStatus.SETTLED)
                         database.appDao().deletePacketById(transaction.packetId)
                         logEvent("Upload settled")
                         NotificationUtils.sendNotification(context, "Settlement Confirmed", "₹${transaction.amount} added to your account")
+                        
+                        _needsSync.tryEmit(Unit)
                         
                         // Send Settlement ACK back to Phone A
                         val ack = MeshPacket(
@@ -954,6 +971,10 @@ class BluetoothTransferService(private val context: Context) {
                     }
                     val response = apiService.ingestPacket(meshPacket)
                     if (response.isSuccessful && (response.body()?.outcome == "SETTLED" || response.body()?.outcome == "DUPLICATE_DROPPED")) {
+                        val serverPacketHash = response.body()?.packetHash
+                        if (serverPacketHash != null) {
+                            database.appDao().updateTransactionPacketId(transactionId, serverPacketHash)
+                        }
                         database.appDao().updateTransactionStatusById(transactionId, TransactionStatus.SETTLED)
                         database.appDao().deletePacketById(transaction.packetId)
                         logEvent("Upload settled")
@@ -978,30 +999,22 @@ class BluetoothTransferService(private val context: Context) {
                 val body = response.body()
                 if (response.isSuccessful) {
                     if (body?.outcome == "SETTLED" || body?.outcome == "DUPLICATE_DROPPED") {
-                        // Try to get real amount/VPA from server response if provided; fallback to packet senderVpa
-                        val resolvedSenderVpa = packet.senderVpa ?: localTx.senderVpa
-                        val resolvedReceiverVpa = localTx.receiverVpa.takeIf {
-                            it.isNotBlank() && it != "pending-server-resolution"
-                        } ?: ""
-
-                        // Update local transaction with real details for history display
-                        database.appDao().updateTransactionDetails(
-                            transactionId = localTx.transactionId,
-                            amount = "settled",   // amount unknown client-side (encrypted); use label
-                            senderVpa = resolvedSenderVpa,
-                            receiverVpa = resolvedReceiverVpa,
-                            status = TransactionStatus.SETTLED
-                        )
+                        // Delete the temporary "pending upload" records. A clean sync from
+                        // the server will insert the real settled transaction with the correct
+                        // amount and VPA — making Phone B's history look identical to Phone A.
+                        database.appDao().deleteTransactionById(localTx.transactionId)
                         database.appDao().deletePacketById(packet.packetId)
                         logEvent("Upload settled")
 
                         NotificationUtils.sendNotification(
                             context,
                             "Settlement Confirmed",
-                            "Payment from $resolvedSenderVpa settled successfully"
+                            "Payment from ${packet.senderVpa} settled successfully"
                         )
 
-                        // Notify ViewModel to refresh transaction list
+                        // Trigger a server sync so Phone B pulls the real transaction
+                        // (with correct amount, senderVpa, receiverVpa) into its history
+                        _needsSync.tryEmit(Unit)
                         _needsRefresh.tryEmit(Unit)
 
                         // Send Settlement ACK back to Phone A via the open socket

@@ -124,6 +124,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 refreshAccountFromServer()
             }
         }
+
+        // When Phone B successfully uploads a received BT packet, sync with the server
+        // so the real settled transaction (correct amount + VPA) appears in history.
+        viewModelScope.launch {
+            bluetoothTransferService.needsSync.collect {
+                // refreshTransactions() calls syncTransactionsWithServer() internally,
+                // which will insert the real settled transaction from the server.
+                refreshTransactions()
+                refreshAccountFromServer()
+            }
+        }
     }
 
     fun initBluetoothMesh() {
@@ -225,6 +236,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun refreshAccountFromServer() {
         val vpa = _currentAccount.value?.vpa ?: return
+        
+        // 1. Sync local state first (in case BluetoothTransferService deducted balance offline)
+        val localBalStr = prefs.getString("user_balance_$vpa", null)
+        if (localBalStr != null) {
+            _currentAccountBalance.value = java.math.BigDecimal(localBalStr)
+        }
+
+        // 2. Try to fetch the latest truth from the server
         viewModelScope.launch {
             try {
                 val resp = repository.fetchAccounts()
@@ -237,7 +256,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         prefs.edit().putString("user_balance_$vpa", myAcc.balance.toPlainString()).apply()
                     }
                 }
-            } catch (_: Exception) { }
+            } catch (_: Exception) { 
+                // Offline — keep the local balance that we just loaded
+            }
         }
     }
 

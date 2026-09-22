@@ -58,7 +58,7 @@ data class Transaction(
     @SerializedName("retryCount") val retryCount: Int = 0,
     @SerializedName("digitalSignature") val digitalSignature: String = "",
     @SerializedName("createdAt") val createdAt: Long = System.currentTimeMillis(),
-    @SerializedName("packetId") val packetId: String? = null,
+    @SerializedName(value = "packetId", alternate = ["packetHash"]) val packetId: String? = null,
     @SerializedName("senderVpa") val senderVpa: String? = null,
     @SerializedName("receiverVpa") val receiverVpa: String? = null,
     @SerializedName("hopCount") val hopCount: Int = 0,
@@ -83,7 +83,8 @@ data class RegisterRequest(
 data class IngestResponse(
     val outcome: String,
     val reason: String?,
-    val transactionId: Long?
+    val transactionId: Long?,
+    val packetHash: String?
 )
 
 data class MeshStateResponse(

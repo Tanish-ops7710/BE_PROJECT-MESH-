@@ -42,11 +42,17 @@ interface AppDao {
     @Query("SELECT * FROM local_transactions WHERE packetId = :packetId LIMIT 1")
     suspend fun getTransactionByPacketId(packetId: String): LocalTransactionEntity?
 
+    @Query("DELETE FROM local_transactions WHERE transactionId = :transactionId")
+    suspend fun deleteTransactionById(transactionId: String)
+
     @Query("SELECT * FROM local_transactions WHERE status = :status ORDER BY createdAt DESC, timestamp DESC")
     fun getTransactionsByStatus(status: String): Flow<List<LocalTransactionEntity>>
 
     @Query("UPDATE local_transactions SET status = :status WHERE packetId = :packetId")
     suspend fun updateTransactionStatus(packetId: String, status: String)
+
+    @Query("UPDATE local_transactions SET packetId = :newPacketId WHERE transactionId = :transactionId")
+    suspend fun updateTransactionPacketId(transactionId: String, newPacketId: String)
 
     @Query("UPDATE local_transactions SET status = :status WHERE transactionId = :transactionId")
     suspend fun updateTransactionStatusById(transactionId: String, status: String)

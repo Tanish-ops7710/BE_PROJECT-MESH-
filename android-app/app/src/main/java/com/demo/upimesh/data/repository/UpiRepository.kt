@@ -383,7 +383,7 @@ class UpiRepository(
                         (sTx.senderVpa == localTx.senderVpa && sTx.receiverVpa == localTx.receiverVpa && sTx.amount.toPlainString() == localTx.amount)
                     }
                     if (matched != null && (matched.status.equals("SETTLED", ignoreCase = true) || matched.status.equals("COMPLETED", ignoreCase = true))) {
-                        if (localTx.status != TransactionStatus.SETTLED || localTx.amount == "settled" || localTx.receiverVpa.isBlank()) {
+                        if (localTx.status != TransactionStatus.SETTLED || localTx.amount == "pending" || localTx.amount == "0" || localTx.receiverVpa.isBlank()) {
                             appDao.updateTransactionDetails(
                                 transactionId = localTx.transactionId,
                                 amount = matched.amount.toPlainString(),
